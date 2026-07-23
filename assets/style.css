@@ -1,0 +1,307 @@
+/* ===================================================================
+   Enterprise HR AI Assistant — Custom Theme
+   =================================================================== */
+
+/* ---------- Layout ---------- */
+.stApp {
+    background-color: #F1F5F9;
+}
+
+.block-container {
+    padding: 1.5rem 2rem !important;
+    max-width: 1200px;
+}
+
+/* ---------- Sidebar ---------- */
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #1A365D 0%, #15294A 100%);
+    width: 260px;
+    padding-top: 0;
+}
+
+section[data-testid="stSidebar"] .stApp {
+    background: transparent;
+}
+
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
+    color: #CBD5E1;
+}
+
+.sidebar-header {
+    padding: 1.5rem 1rem 0.5rem;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 0.5rem;
+}
+
+.sidebar-header h2 {
+    color: #FFFFFF !important;
+    font-size: 1.2rem !important;
+    font-weight: 700 !important;
+    margin: 0 !important;
+}
+
+.sidebar-header p {
+    color: #94A3B8 !important;
+    font-size: 0.75rem !important;
+    margin: 0.15rem 0 0 !important;
+}
+
+section[data-testid="stSidebar"] .st-emotion-cache-16idsys p {
+    font-size: 0.85rem;
+}
+
+/* Nav link styling */
+section[data-testid="stSidebar"] a {
+    color: #CBD5E1 !important;
+    text-decoration: none !important;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s;
+    margin: 0.1rem 0.5rem;
+}
+
+section[data-testid="stSidebar"] a:hover {
+    background: rgba(255,255,255,0.08);
+    color: #FFFFFF !important;
+}
+
+section[data-testid="stSidebar"] a:focus,
+section[data-testid="stSidebar"] a.active {
+    background: rgba(13,148,136,0.2);
+    color: #FFFFFF !important;
+    border-left: 3px solid #0D9488;
+}
+
+/* ---------- Cards ---------- */
+.card {
+    background: #FFFFFF;
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    margin-bottom: 1rem;
+    border: 1px solid #E2E8F0;
+}
+
+.card h3 {
+    font-size: 0.9rem;
+    color: #64748B;
+    margin: 0 0 0.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.card .kpi-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #0F172A;
+    line-height: 1.2;
+}
+
+.card .kpi-delta {
+    font-size: 0.8rem;
+    margin-top: 0.25rem;
+}
+
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+/* ---------- Metric Cards ---------- */
+div[data-testid="metric-container"] {
+    background: #FFFFFF;
+    border-radius: 12px;
+    padding: 1rem 1.25rem !important;
+    border: 1px solid #E2E8F0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+div[data-testid="metric-container"] label {
+    font-size: 0.8rem !important;
+    color: #64748B !important;
+    font-weight: 600 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+div[data-testid="metric-container"] [data-testid="metric-value"] {
+    font-size: 1.75rem !important;
+    font-weight: 700 !important;
+    color: #0F172A !important;
+}
+
+/* ---------- Chat ---------- */
+.chat-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    max-height: calc(100vh - 240px);
+    overflow-y: auto;
+}
+
+.message-row {
+    display: flex;
+    margin-bottom: 0.5rem;
+}
+
+.message-row.user {
+    justify-content: flex-end;
+}
+
+.message-row.assistant {
+    justify-content: flex-start;
+}
+
+.message-bubble {
+    max-width: 78%;
+    padding: 0.75rem 1rem;
+    border-radius: 16px;
+    line-height: 1.5;
+    font-size: 0.9rem;
+    position: relative;
+}
+
+.message-bubble.user {
+    background: #1A365D;
+    color: #FFFFFF;
+    border-bottom-right-radius: 4px;
+}
+
+.message-bubble.assistant {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-bottom-left-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.message-intent-tag {
+    display: inline-block;
+    font-size: 0.65rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    margin-top: 0.35rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.intent-tag-CRUD { background: #DBEAFE; color: #1E40AF; }
+.intent-tag-SQL { background: #F3E8FF; color: #7C3AED; }
+.intent-tag-Analytics { background: #FEF3C7; color: #92400E; }
+.intent-tag-SemanticSearch { background: #D1FAE5; color: #065F46; }
+
+/* ---------- Buttons ---------- */
+.stButton button {
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    font-size: 0.85rem !important;
+    padding: 0.4rem 1rem !important;
+    transition: all 0.2s !important;
+}
+
+.stButton button[kind="primary"] {
+    background: #1A365D !important;
+    color: #FFFFFF !important;
+    border: none !important;
+}
+
+.stButton button[kind="primary"]:hover {
+    background: #15294A !important;
+}
+
+/* ---------- DataFrames ---------- */
+[data-testid="stDataFrame"] {
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+[data-testid="stDataFrame"] thead tr th {
+    background: #F8FAFC !important;
+    font-weight: 600 !important;
+    font-size: 0.8rem !important;
+    color: #64748B !important;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.6rem 0.75rem !important;
+}
+
+/* ---------- Dividers ---------- */
+hr {
+    margin: 1rem 0 !important;
+    border-color: #E2E8F0 !important;
+}
+
+/* ---------- Input ---------- */
+.stTextInput input, .stSelectbox select, .stTextArea textarea {
+    border-radius: 8px !important;
+    border: 1px solid #E2E8F0 !important;
+}
+
+.stTextInput input:focus, .stSelectbox select:focus, .stTextArea textarea:focus {
+    border-color: #0D9488 !important;
+    box-shadow: 0 0 0 2px rgba(13,148,136,0.15) !important;
+}
+
+/* ---------- Expander ---------- */
+.streamlit-expanderHeader {
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
+    border-radius: 8px !important;
+}
+
+/* ---------- Error / Info / Success ---------- */
+.stAlert {
+    border-radius: 10px !important;
+    border: none !important;
+}
+
+/* ---------- Chat input ---------- */
+div[data-testid="stChatInput"] {
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 12px !important;
+    padding: 0.25rem 0.5rem !important;
+}
+
+div[data-testid="stChatInput"]:focus-within {
+    border-color: #0D9488 !important;
+    box-shadow: 0 0 0 2px rgba(13,148,136,0.15) !important;
+}
+
+/* ---------- Status badges ---------- */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.status-badge.active {
+    background: #DCFCE7;
+    color: #166534;
+}
+
+.status-badge.inactive {
+    background: #FEE2E2;
+    color: #991B1B;
+}
+
+.status-badge.on-leave {
+    background: #FEF3C7;
+    color: #92400E;
+}
+
+/* ---------- Loading ---------- */
+.stSpinner {
+    text-align: center;
+    padding: 2rem;
+}
