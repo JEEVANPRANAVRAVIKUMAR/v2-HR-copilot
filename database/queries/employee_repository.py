@@ -16,6 +16,7 @@ from core.constants import (
     EMPLOYMENT_DETAILS_TABLE,
     EMPLOYEE_PROFILES_TABLE,
     POSITION_HISTORY_TABLE,
+    DEPARTMENTS_TABLE,
 )
 from database.queries.base_repository import BaseRepository
 from models.employee import Employee, EmployeeCreate, EmployeeUpdate
@@ -335,7 +336,7 @@ class EmployeeRepository(BaseRepository):
                 f"{CONTACT_INFO_TABLE}(*),"
                 f"{ADDRESSES_TABLE}(*),"
                 f"{EMPLOYMENT_DETAILS_TABLE}(*),"
-                f"{POSITION_HISTORY_TABLE}(*)"
+                f"{POSITION_HISTORY_TABLE}(*,{DEPARTMENTS_TABLE}(*))"
             )
 
             response = self._execute(
@@ -358,44 +359,57 @@ class EmployeeRepository(BaseRepository):
             }
 
             profiles = row.get(EMPLOYEE_PROFILES_TABLE)
-            if profiles and len(profiles) > 0:
-                p = profiles[0]
-                profile_data["dob"] = p.get("dob")
-                profile_data["gender"] = p.get("gender")
-                profile_data["nationality"] = p.get("nationality")
-                profile_data["marital_status"] = p.get("marital_status")
-                profile_data["blood_group"] = p.get("blood_group")
+            if profiles:
+                p = profiles[0] if isinstance(profiles, list) and len(profiles) > 0 else (profiles if isinstance(profiles, dict) else None)
+                if p:
+                    profile_data["dob"] = p.get("dob")
+                    profile_data["gender"] = p.get("gender")
+                    profile_data["nationality"] = p.get("nationality")
+                    profile_data["marital_status"] = p.get("marital_status")
+                    profile_data["blood_group"] = p.get("blood_group")
 
             contacts = row.get(CONTACT_INFO_TABLE)
-            if contacts and len(contacts) > 0:
-                c = contacts[0]
-                profile_data["email"] = c.get("email")
-                profile_data["phone"] = c.get("phone")
+            if contacts:
+                c = contacts[0] if isinstance(contacts, list) and len(contacts) > 0 else (contacts if isinstance(contacts, dict) else None)
+                if c:
+                    profile_data["email"] = c.get("email")
+                    profile_data["phone"] = c.get("phone")
 
             addresses = row.get(ADDRESSES_TABLE)
-            if addresses and len(addresses) > 0:
-                a = addresses[0]
-                profile_data["city"] = a.get("city")
-                profile_data["full_address"] = a.get("full_address")
+            if addresses:
+                a = addresses[0] if isinstance(addresses, list) and len(addresses) > 0 else (addresses if isinstance(addresses, dict) else None)
+                if a:
+                    profile_data["city"] = a.get("city")
+                    profile_data["full_address"] = a.get("full_address")
 
             employments = row.get(EMPLOYMENT_DETAILS_TABLE)
-            if employments and len(employments) > 0:
-                e = employments[0]
-                profile_data["employment_type"] = e.get("employment_type")
-                profile_data["joining_date"] = e.get("joining_date")
-                profile_data["status"] = e.get("status")
-                profile_data["work_location"] = e.get("work_location")
+            if employments:
+                e = employments[0] if isinstance(employments, list) and len(employments) > 0 else (employments if isinstance(employments, dict) else None)
+                if e:
+                    profile_data["employment_type"] = e.get("employment_type")
+                    profile_data["joining_date"] = e.get("joining_date")
+                    profile_data["status"] = e.get("status")
+                    profile_data["work_location"] = e.get("work_location")
 
             positions = row.get(POSITION_HISTORY_TABLE)
-            if positions and len(positions) > 0:
-                positions_sorted = sorted(
-                    positions,
-                    key=lambda x: x.get("effective_date", ""),
-                    reverse=True,
-                )
-                latest = positions_sorted[0]
-                profile_data["department"] = latest.get("department")
-                profile_data["position_title"] = latest.get("position_title")
+            if positions:
+                pos_list = [positions] if isinstance(positions, dict) else (positions if isinstance(positions, list) else [])
+                if pos_list:
+                    positions_sorted = sorted(
+                        pos_list,
+                        key=lambda x: x.get("effective_date", ""),
+                        reverse=True,
+                    )
+                    latest = positions_sorted[0]
+                    dept_val = latest.get("department")
+                    if dept_val is None:
+                        depts = latest.get("departments")
+                        if isinstance(depts, dict):
+                            dept_val = depts.get("department_name")
+                        elif isinstance(depts, list) and len(depts) > 0:
+                            dept_val = depts[0].get("department_name")
+                    profile_data["department"] = dept_val
+                    profile_data["position_title"] = latest.get("position_title")
 
             return EmployeeProfileResponse.model_validate(profile_data)
 

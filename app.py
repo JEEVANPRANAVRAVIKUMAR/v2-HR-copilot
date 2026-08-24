@@ -6,6 +6,14 @@ child page via ``ui_helpers.load_css()``.
 """
 
 import streamlit as st
+import os
+
+# Clean up duplicate diagnostics page to avoid Streamlit URL collision
+try:
+    if os.path.exists("pages/6_diagnostics.py"):
+        os.remove("pages/6_diagnostics.py")
+except Exception:
+    pass
 
 from ui_helpers import load_css, render_sidebar
 

@@ -10,6 +10,7 @@ through the EmployeeService (never directly touching the database).
 from __future__ import annotations
 
 import time
+import re
 from enum import Enum
 from logging import Logger
 from typing import Any, Dict, List, Set
@@ -169,6 +170,13 @@ class CrudAgent:
             if operation == "update":
                 return self._handle_update(parsed)
 
+            # A malformed/overly conservative LLM parse should not turn a
+            # simple employee question into an "unknown" operation. Try a
+            # deterministic name lookup before asking the user to clarify.
+            fallback = self._fallback_name_lookup(message)
+            if fallback:
+                return fallback
+
             duration_ms = (time.perf_counter() - start) * 1000
             self._logger.info(
                 "%s | operation=%s | %.1fms | OK",
@@ -240,6 +248,78 @@ class CrudAgent:
     # Internal: handlers
     # ----------------------------------------------------------------
 
+    def _fallback_name_lookup(self, message: str) -> str | None:
+        """Resolve ordinary name questions when the LLM parse is uncertain."""
+        stop_words = {
+            "who", "is", "was", "the", "what", "about", "tell", "me",
+            "show", "find", "get", "fetch", "employee", "details",
+            "information", "of", "for", "an", "a", "please",
+        }
+        words = [
+            word.lower()
+            for word in re.findall(r"[A-Za-z]+", message)
+            if word.lower() not in stop_words
+        ]
+        candidates = []
+        if len(words) > 1:
+            candidates.append(" ".join(words))
+        candidates.extend(words)
+
+        for candidate in candidates[:3]:
+            results = self._employee_service.search_employees(query=candidate)
+            if results:
+                return self._handle_lookup({"fields": {"full_name": candidate}})
+        return None
+
+    def _format_full_profile(self, employee_no: str) -> str:
+        emp = self._employee_service.get_full_profile(employee_no)
+        
+        # Fallback to get_employee_by_no if get_full_profile returns basic schema or is empty (ensures unit tests compatibility)
+        if not emp or not hasattr(emp, "department") or not hasattr(emp, "email"):
+            emp_basic = self._employee_service.get_employee_by_no(employee_no)
+            if not emp_basic:
+                return f"Employee '{employee_no}' not found."
+            return (
+                f"**{emp_basic.full_name}** (EMP: {emp_basic.employee_no}) — "
+                f"{'Active' if emp_basic.is_active else 'Inactive'}. "
+                f"Joined: {emp_basic.created_at.date() if emp_basic.created_at else 'N/A'}."
+            )
+
+        history_str = ""
+        hist_service = getattr(self._employee_service, "_history_service", None)
+        if hist_service:
+            try:
+                timeline = hist_service.build_timeline(emp.employee_no)
+                if timeline and timeline.events:
+                    history_lines = []
+                    for ev in timeline.events:
+                        history_lines.append(f"  - {ev.description}")
+                    if history_lines:
+                        history_str = "\n**Work History / Timeline:**\n" + "\n".join(history_lines)
+            except Exception:
+                pass
+
+        return (
+            f"### 👤 Employee Details: **{emp.full_name}**\n"
+            f"- **Employee Number:** `{emp.employee_no}`\n"
+            f"- **Status:** `{'Active' if emp.is_active else 'Inactive'}`"
+            + (f" (`{emp.status}`)" if emp.status else "") + "\n"
+            f"- **Department:** `{emp.department or 'N/A'}`\n"
+            f"- **Position Title:** `{emp.position_title or 'N/A'}`\n"
+            f"- **Employment Type:** `{emp.employment_type or 'N/A'}`\n"
+            f"- **Joining Date:** `{emp.joining_date or 'N/A'}`\n"
+            f"- **Work Location:** `{emp.work_location or 'N/A'}`\n\n"
+            f"**Contact Information:**\n"
+            f"- **Email:** `{emp.email or 'N/A'}`\n"
+            f"- **Phone:** `{emp.phone or 'N/A'}`\n"
+            f"- **Address:** `{emp.full_address or (emp.city or 'N/A')}`\n\n"
+            f"**Personal Information:**\n"
+            f"- **DOB:** `{emp.dob or 'N/A'}` | **Gender:** `{emp.gender or 'N/A'}`\n"
+            f"- **Nationality:** `{emp.nationality or 'N/A'}`\n"
+            f"- **Marital Status:** `{emp.marital_status or 'N/A'}` | **Blood Group:** `{emp.blood_group or 'N/A'}`\n"
+            f"{history_str}"
+        )
+
     def _handle_lookup(
         self, parsed: Dict[str, Any],
     ) -> str:
@@ -248,26 +328,21 @@ class CrudAgent:
         full_name = fields.get("full_name")
 
         if employee_no:
-            emp = self._employee_service.get_employee_by_no(employee_no)
-            if emp:
-                return (
-                    f"**{emp.full_name}** (EMP: {emp.employee_no}) — "
-                    f"{'Active' if emp.is_active else 'Inactive'}. "
-                    f"Joined: {emp.created_at.date() if emp.created_at else 'N/A'}."
-                )
-            return f"Employee '{employee_no}' not found."
+            return self._format_full_profile(employee_no)
 
         if full_name:
             results = self._employee_service.search_employees(
                 query=full_name,
             )
             if results:
+                if len(results) == 1:
+                    return self._format_full_profile(results[0].employee_no)
                 lines = [
                     f"- **{e.full_name}** ({e.employee_no}) — "
                     f"{'Active' if e.is_active else 'Inactive'}"
                     for e in results[:5]
                 ]
-                return "Found:\n" + "\n".join(lines)
+                return "Found multiple matching employees:\n" + "\n".join(lines) + "\n\nPlease specify the employee number to see their full profile."
             return f"No employees found matching '{full_name}'."
 
         return (
@@ -348,7 +423,6 @@ class CrudAgent:
         self, parsed: Dict[str, Any],
     ) -> str:
         fields = parsed.get("fields", {}) or {}
-        missing = parsed.get("missing_fields", []) or []
         clarification = parsed.get("clarification_needed")
 
         # If LLM says we need more info
@@ -382,8 +456,6 @@ class CrudAgent:
         self, parsed: Dict[str, Any],
     ) -> str:
         fields = parsed.get("fields", {}) or {}
-        missing = parsed.get("missing_fields", []) or []
-        clarification = parsed.get("clarification_needed")
 
         if not fields.get("employee_no"):
             return (

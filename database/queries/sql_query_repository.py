@@ -115,27 +115,94 @@ class SqlQueryRepository(BaseRepository):
         return sorted(ALLOWED_TABLES)
 
     def get_table_schema_hint(self) -> str:
-        return (
-            f"Available tables: {', '.join(sorted(ALLOWED_TABLES))}. "
-            "All tables use 'employee_no' (TEXT) as the cross-table key."
-            "position_history has 'department_id' (FK to departments)."
-            "departments has 'department_name'."
-            "Use Supabase-safe patterns: eq, ilike, in_ filters; "
-            "aggregate COUNT/GROUP BY in Python."
-        )
+        return """Available tables and columns:
+- employees (employee_no TEXT PK, full_name TEXT, is_active BOOLEAN)
+- employee_profiles (employee_no TEXT FK, dob DATE, gender TEXT, nationality TEXT, marital_status TEXT, blood_group TEXT)
+- contact_info (employee_no TEXT FK, email TEXT, phone TEXT)
+- addresses (employee_no TEXT FK, city TEXT, full_address TEXT)
+- employment_details (employee_no TEXT FK, employment_type TEXT, status TEXT, joining_date DATE, work_location TEXT)
+- position_history (employee_no TEXT FK, position_title TEXT, department_id INTEGER FK, start_date DATE, end_date DATE, salary NUMERIC)
+- departments (id INTEGER PK, department_name TEXT)
+
+Query Rules:
+1. To query an employee's department, JOIN position_history on employee_no, and departments on department_id = departments.id, then filter or group by departments.department_name.
+2. To query an employee's position title, use position_history.position_title. Never select employees.job_title or employees.position_title directly as they do not exist.
+3. Filter active status using employees.is_active = true.
+"""
 
     # ----------------------------------------------------------------
     # Translation engine
     # ----------------------------------------------------------------
 
+    def _flatten_employee_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        """Flatten nested table structures in an employee row to root keys."""
+        flat = dict(row)
+        
+        # 1. Profiles
+        profiles = row.get(EMPLOYEE_PROFILES_TABLE) or row.get("employee_profiles")
+        if profiles:
+            p = profiles[0] if isinstance(profiles, list) and len(profiles) > 0 else (profiles if isinstance(profiles, dict) else {})
+            for k, v in p.items():
+                if k not in flat:
+                    flat[k] = v
+
+        # 2. Contact Info
+        contacts = row.get(CONTACT_INFO_TABLE) or row.get("contact_info")
+        if contacts:
+            c = contacts[0] if isinstance(contacts, list) and len(contacts) > 0 else (contacts if isinstance(contacts, dict) else {})
+            for k, v in c.items():
+                if k not in flat:
+                    flat[k] = v
+
+        # 3. Addresses
+        addresses = row.get(ADDRESSES_TABLE) or row.get("addresses")
+        if addresses:
+            a = addresses[0] if isinstance(addresses, list) and len(addresses) > 0 else (addresses if isinstance(addresses, dict) else {})
+            for k, v in a.items():
+                if k not in flat:
+                    flat[k] = v
+
+        # 4. Employment Details
+        employments = row.get(EMPLOYMENT_DETAILS_TABLE) or row.get("employment_details")
+        if employments:
+            e = employments[0] if isinstance(employments, list) and len(employments) > 0 else (employments if isinstance(employments, dict) else {})
+            for k, v in e.items():
+                if k not in flat:
+                    flat[k] = v
+
+        # 5. Position History & Departments
+        positions = row.get(POSITION_HISTORY_TABLE) or row.get("position_history")
+        if positions:
+            pos_list = [positions] if isinstance(positions, dict) else (positions if isinstance(positions, list) else [])
+            if pos_list:
+                # Sort to get the latest position title/department
+                pos_sorted = sorted(
+                    pos_list,
+                    key=lambda x: x.get("effective_date", x.get("start_date", "") or ""),
+                    reverse=True,
+                )
+                latest = pos_sorted[0]
+                for k, v in latest.items():
+                    if k not in flat:
+                        flat[k] = v
+                
+                # Extract department name
+                dept_val = latest.get("department")
+                if dept_val is None:
+                    depts = latest.get("departments") or latest.get(DEPARTMENTS_TABLE)
+                    if isinstance(depts, dict):
+                        dept_val = depts.get("department_name")
+                    elif isinstance(depts, list) and len(depts) > 0:
+                        dept_val = depts[0].get("department_name")
+                if dept_val:
+                    flat["department_name"] = dept_val
+                    flat["department"] = dept_val
+
+        return flat
+
     def _execute_translated(self, sql: str) -> List[Dict[str, Any]]:
         """
         Translate a validated SELECT to Supabase REST calls.
-
-        Handles common patterns:
-          - Simple SELECT with WHERE eq/ilike + COUNT
-          - SELECT with GROUP BY (aggregation in Python)
-          - SELECT with ORDER BY, LIMIT
         """
         cleaned = _COMMENT_RE.sub("", sql).strip()
 
@@ -148,13 +215,28 @@ class SqlQueryRepository(BaseRepository):
 
         # Build a selective fetch
         try:
-            rows = self._fetch_with_filters(cleaned, table_name, [])
+            if table_name == EMPLOYEES_TABLE:
+                # Fetch full join to support joins in memory
+                joined_select = (
+                    f"*,"
+                    f"{EMPLOYEE_PROFILES_TABLE}(*),"
+                    f"{CONTACT_INFO_TABLE}(*),"
+                    f"{ADDRESSES_TABLE}(*),"
+                    f"{EMPLOYMENT_DETAILS_TABLE}(*),"
+                    f"{POSITION_HISTORY_TABLE}(*,{DEPARTMENTS_TABLE}(*))"
+                )
+                response = self._execute(
+                    self.client.table(EMPLOYEES_TABLE).select(joined_select)
+                )
+                raw_rows = response.data if self._has_data(response) else []
+                rows = [self._flatten_employee_row(r) for r in raw_rows]
+            else:
+                response = self._execute(
+                    self.client.table(table_name).select("*")
+                )
+                rows = response.data if self._has_data(response) else []
         except Exception:
-            # Fallback: fetch all from the primary table
-            response = self._execute(
-                self.client.table(table_name).select("*")
-            )
-            rows = response.data if self._has_data(response) else []
+            rows = []
 
         # Apply post-fetch filtering and aggregation
         rows = self._post_filter(cleaned, rows, table_name)
@@ -169,58 +251,10 @@ class SqlQueryRepository(BaseRepository):
         self, sql: str, table_name: str, joins: list,
     ) -> List[Dict[str, Any]]:
         """
-        Build a Supabase REST query from WHERE clause fragments.
+        Dummy fetch with filters wrapper (not used when using full fetch translation).
         """
-        q = self.client.table(table_name).select("*")
-
-        # Extract WHERE conditions
-        where_clause = re.search(r"WHERE\s+(.+?)(?:GROUP\s+BY|ORDER\s+BY|LIMIT|$)", sql, re.IGNORECASE | re.DOTALL)
-        if where_clause:
-            where_text = where_clause.group(1).strip().rstrip(";")
-            # Parse simple eq conditions
-            for cond_match in re.finditer(
-                r"(\w+)\.(\w+)\s*=\s*['\"]?([\w\s\-]+)['\"]?",
-                where_text, re.IGNORECASE,
-            ):
-                table_ref = cond_match.group(1).lower()
-                column = cond_match.group(2).lower()
-                value = cond_match.group(3).strip()
-
-                if table_ref in ("e", "employees") and table_name == EMPLOYEES_TABLE:
-                    q = q.eq(column, value)
-                elif table_name in (EMPLOYEES_TABLE,) and table_ref in ("e", table_name.lower()):
-                    q = q.eq(column, value)
-
-            # Parse ilike conditions
-            for ilike_match in re.finditer(
-                r"(\w+)\.(\w+)\s+ILIKE\s+'%([^%]+)%'",
-                where_text, re.IGNORECASE,
-            ):
-                table_ref = ilike_match.group(1).lower()
-                column = ilike_match.group(2).lower()
-                value = ilike_match.group(3).strip()
-                if table_name == EMPLOYEES_TABLE:
-                    q = q.ilike(column, f"%{value}%")
-
-            # Parse is_active = true/false
-            for eq_match in re.finditer(
-                r"(\w+)\.is_active\s*=\s*(true|false)",
-                where_text, re.IGNORECASE,
-            ):
-                val = eq_match.group(2).lower() == "true"
-                if table_name == EMPLOYEES_TABLE:
-                    q = q.eq("is_active", val)
-
-        try:
-            response = self._execute(q)
-            return response.data if self._has_data(response) else []
-        except Exception:
-            # If Supabase query fails, fetch everything
-            try:
-                response = self._execute(self.client.table(table_name).select("*"))
-                return response.data if self._has_data(response) else []
-            except Exception:
-                return []
+        response = self._execute(self.client.table(table_name).select("*"))
+        return response.data if self._has_data(response) else []
 
     def _post_filter(
         self, sql: str, rows: List[Dict[str, Any]], table_name: str,
@@ -238,12 +272,14 @@ class SqlQueryRepository(BaseRepository):
         where_text = where_clause.group(1).strip().rstrip(";").rstrip(")").strip()
 
         filtered = rows
+        
+        # 1. Parse simple equals (=) conditions safely
         for eq_match in re.finditer(
-            r"(\w+)\.(\w+)\s*=\s*['\"]?([\w\s\-]+)['\"]?",
+            r"(\w+)\.(\w+)\s*=\s*(?:['\"]([^'\"]+)['\"]|([^\s'\")]+))",
             where_text, re.IGNORECASE,
         ):
             column = eq_match.group(2).lower()
-            value = eq_match.group(3).strip()
+            value = (eq_match.group(3) or eq_match.group(4) or "").strip()
 
             # Handle boolean true/false
             if value.lower() == "true":
@@ -253,6 +289,37 @@ class SqlQueryRepository(BaseRepository):
             else:
                 filtered = [r for r in filtered if str(r.get(column, "")) == value]
 
+        # 2. Parse ILIKE conditions safely
+        for ilike_match in re.finditer(
+            r"(\w+)\.(\w+)\s+ILIKE\s+['\"]%?([^%'\"]+)%?['\"]",
+            where_text, re.IGNORECASE,
+        ):
+            column = ilike_match.group(2).lower()
+            val = ilike_match.group(3).strip().lower()
+            filtered = [r for r in filtered if val in str(r.get(column, "")).lower()]
+
+        # 3. Parse comparisons (>, <, >=, <=) safely
+        for comp_match in re.finditer(
+            r"(\w+)\.(\w+)\s*(>=|<=|>|<)\s*([0-9.]+)",
+            where_text, re.IGNORECASE,
+        ):
+            column = comp_match.group(2).lower()
+            op = comp_match.group(3)
+            val = float(comp_match.group(4))
+            
+            def compare(row_val, operator, limit):
+                try:
+                    num = float(row_val)
+                    if operator == ">": return num > limit
+                    if operator == "<": return num < limit
+                    if operator == ">=": return num >= limit
+                    if operator == "<=": return num <= limit
+                except (ValueError, TypeError):
+                    return False
+            
+            filtered = [r for r in filtered if compare(r.get(column), op, val)]
+
+        # 4. Parse IS NOT NULL conditions
         for ne_match in re.finditer(
             r"(\w+)\.(\w+)\s*(?:IS\s+NOT|!=|<>)\s*(?:NULL|null)",
             where_text, re.IGNORECASE,

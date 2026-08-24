@@ -9,6 +9,7 @@ handler.
 from __future__ import annotations
 
 import json
+import math
 import time
 from enum import Enum
 from logging import Logger
@@ -89,7 +90,8 @@ employee records by name or ID. Example: "Add a new employee", \
 "Show me John's details", "Deactivate EMP005". \
 Also use CRUD for "show all employees", "list everyone", \
 "show me all employees" — simple list/view requests with no \
-filtering or aggregation.
+filtering or aggregation. \
+Do NOT use CRUD for "list departments" or "list positions" — those should go to SQL.
 
 - Analytics: Statistical or aggregate questions about the workforce. \
 Example: "How many employees per department?", "Average tenure", \
@@ -101,9 +103,10 @@ skills, or soft criteria. Example: "Find someone with Python experience", \
 
 - SQL: Questions that require a database query to answer — typically \
 filtered, cross-referenced, or computed queries that aren't simple \
-list-all or single-employee lookups. \
+list-all or single-employee lookups. Also use SQL for simple lists of \
+departments or positions (e.g. "list departments", "show all departments"). \
 Example: "Who joined last month?", "Employees with salary > 100k", \
-"Employee count grouped by department and city". \
+"list departments", "show all departments". \
 Do NOT use SQL for "show all employees" or "list everyone" —
 those are CRUD.
 
@@ -260,11 +263,26 @@ class AIRouter:
         try:
             data: Dict[str, Any] = json.loads(cleaned)
         except json.JSONDecodeError as exc:
-            raise ServiceError(
-                f"Failed to parse router response: {exc}"
-            ) from exc
+            import re
+            intent_match = re.search(r'"intent"\s*:\s*"([^"]+)"', cleaned, re.IGNORECASE)
+            confidence_match = re.search(r'"confidence"\s*:\s*([0-9.]+)', cleaned)
+            reasoning_match = re.search(r'"reasoning"\s*:\s*"(.+?)"(?=\s*,\s*"confidence"|\s*\})', cleaned, re.DOTALL)
+            if intent_match:
+                data = {
+                    "intent": intent_match.group(1).strip(),
+                    "reasoning": reasoning_match.group(1).strip() if reasoning_match else "Fallback parsing due to JSONDecodeError",
+                    "confidence": float(confidence_match.group(1)) if confidence_match else 0.9,
+                }
+            else:
+                raise ServiceError(
+                    f"Failed to parse router response: {exc}"
+                ) from exc
 
-        intent_str = data.get("intent", "").strip()
+        if not isinstance(data, dict):
+            raise ServiceError("Router response must be a JSON object.")
+
+        intent_value = data.get("intent", "")
+        intent_str = intent_value.strip() if isinstance(intent_value, str) else ""
 
         try:
             intent = IntentType(intent_str)
@@ -274,8 +292,20 @@ class AIRouter:
                 f"Must be one of {[e.value for e in IntentType]}."
             )
 
+        reasoning = data.get("reasoning", "")
+        if not isinstance(reasoning, str):
+            reasoning = str(reasoning)
+
+        confidence_value = data.get("confidence", 0.0)
+        try:
+            confidence = float(confidence_value)
+            if not math.isfinite(confidence):
+                confidence = 0.0
+        except (TypeError, ValueError):
+            confidence = 0.0
+
         return RouterDecision(
             intent=intent,
-            reasoning=data.get("reasoning", ""),
-            confidence=min(max(float(data.get("confidence", 0.0)), 0.0), 1.0),
+            reasoning=reasoning,
+            confidence=min(max(confidence, 0.0), 1.0),
         )

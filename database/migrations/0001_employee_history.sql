@@ -14,7 +14,7 @@
 
 CREATE TABLE IF NOT EXISTS employee_history (
     id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    employee_id     BIGINT NOT NULL,
+    employee_id     BIGINT,
     employee_no     TEXT   NOT NULL,
     event_type      TEXT   NOT NULL,
     from_value      TEXT,
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS employee_history (
 
 -- Index for the common per-employee timeline query.
 CREATE INDEX IF NOT EXISTS idx_employee_history_employee
-    ON employee_history (employee_id, occurred_at DESC);
+    ON employee_history (employee_no, occurred_at DESC);
 
 -- Index for the stall-detection / "time since last promotion" query.
 CREATE INDEX IF NOT EXISTS idx_employee_history_event_type
@@ -56,8 +56,8 @@ ALTER TABLE employee_history
     DROP CONSTRAINT IF EXISTS fk_employee_history_employee;
 ALTER TABLE employee_history
     ADD CONSTRAINT fk_employee_history_employee
-    FOREIGN KEY (employee_id)
-    REFERENCES employees (id)
+    FOREIGN KEY (employee_no)
+    REFERENCES employees (employee_no)
     ON DELETE CASCADE;
 
 -- Helpful Row-Level Security pattern (optional; safe no-op if RLS

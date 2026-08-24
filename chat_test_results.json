@@ -1,0 +1,127 @@
+[
+  {
+    "question": "How many employees are in the database?",
+    "status": "success",
+    "response": "The organization\u2019s current total headcount is 40 employees. This figure represents the total number of staff members on the payroll at this time."
+  },
+  {
+    "question": "List all employees in the AI department.",
+    "status": "success",
+    "response": "There are no employee records for the AI department in the provided data. Please try a different query or check if the data source includes the AI department information."
+  },
+  {
+    "question": "Who are the managers?",
+    "status": "success",
+    "response": "The provided data does not include any information about employee roles or titles, so I cannot identify who the managers are. Please try a different query that includes role or position details."
+  },
+  {
+    "question": "How many active employees are there?",
+    "status": "error",
+    "error": "Failed to parse router response: Unterminated string starting at: line 3 column 16 (char 42)"
+  },
+  {
+    "question": "What is the average tenure of employees?",
+    "status": "success",
+    "response": "The average employee tenure in the workforce is 4.23 years. This figure represents the typical length of service for staff across the organization."
+  },
+  {
+    "question": "Which department has the most employees?",
+    "status": "success",
+    "response": "The workforce snapshot shows a total of 27 employees across five departments. The AI department has the largest headcount with 10 staff members, while Finance and HR each have 6 employees. Engineering comprises 4 employees, and Marketing has the smallest representation with just 1 employee."
+  },
+  {
+    "question": "How many employees are in Chennai?",
+    "status": "error",
+    "error": "Failed to parse router response: Unterminated string starting at: line 3 column 16 (char 42)"
+  },
+  {
+    "question": "Find a data scientist who knows machine learning.",
+    "status": "success",
+    "response": "I\u2019m sorry, but there are no employees in the system who match the description \u201cdata scientist who knows machine learning.\u201d If you\u2019d like to broaden the search criteria or try a different role, just let me know!"
+  },
+  {
+    "question": "Who works with Python?",
+    "status": "success",
+    "response": "There are no employees matching that query in the current data."
+  },
+  {
+    "question": "Tell me about Rahul.",
+    "status": "success",
+    "response": "Found multiple matching employees:\n- **Rahul Sharma** (EMP001) \u2014 Active\n- **Rahul** (EMP0015) \u2014 Active\n- **Rahul Sharma** (EMP0100) \u2014 Active\n\nPlease specify the employee number to see their full profile."
+  },
+  {
+    "question": "Who has cloud database experience?",
+    "status": "success",
+    "response": "There are no employees in the system who match \u201ccloud database experience.\u201d"
+  },
+  {
+    "question": "Show details of employee EMP001",
+    "status": "success",
+    "response": "### \ud83d\udc64 Employee Details: **Rahul Sharma**\n- **Employee Number:** `EMP001`\n- **Status:** `Active` (`Active`)\n- **Department:** `AI`\n- **Position Title:** `Data Analyst`\n- **Employment Type:** `Full Time`\n- **Joining Date:** `2023-01-10`\n- **Work Location:** `N/A`\n\n**Contact Information:**\n- **Email:** `rahul.sharma@example.com`\n- **Phone:** `9876543210`\n- **Address:** `123 Taylor Road, Adyar, Chennai`\n\n**Personal Information:**\n- **DOB:** `1995-08-15` | **Gender:** `Male`\n- **Nationality:** `Indian`\n- **Marital Status:** `N/A` | **Blood Group:** `N/A`\n"
+  },
+  {
+    "question": "Lookup Vikram Singh",
+    "status": "success",
+    "response": "### \ud83d\udc64 Employee Details: **Vikram Singh**\n- **Employee Number:** `EMP0104`\n- **Status:** `Active` (`Active`)\n- **Department:** `AI`\n- **Position Title:** `Computer Vision Engineer`\n- **Employment Type:** `Full Time`\n- **Joining Date:** `2020-09-15`\n- **Work Location:** `N/A`\n\n**Contact Information:**\n- **Email:** `vikram.singh@company.com`\n- **Phone:** `9876543204`\n- **Address:** `Dwarka, Delhi`\n\n**Personal Information:**\n- **DOB:** `1996-09-12` | **Gender:** `Male`\n- **Nationality:** `Indian`\n- **Marital Status:** `N/A` | **Blood Group:** `N/A`\n"
+  },
+  {
+    "question": "Who is Rahul Sharma?",
+    "status": "success",
+    "response": "Found multiple matching employees:\n- **Rahul Sharma** (EMP001) \u2014 Active\n- **Rahul Sharma** (EMP0100) \u2014 Active\n\nPlease specify the employee number to see their full profile."
+  },
+  {
+    "question": "list everyone",
+    "status": "success",
+    "response": "Showing 20 of 40 employees:\n(first 20 shown)\n- **Rahul Sharma** (EMP001) \u2014 Active\n- **Priya Sharma** (EMP0014) \u2014 Active\n- **Rahul** (EMP0015) \u2014 Active\n- **Gokul** (EMP0019) \u2014 Active\n- **Priya Patel** (EMP002) \u2014 Active\n- **Raghav** (EMP0023) \u2014 Active\n- **Rohan Mehta** (EMP003) \u2014 Active\n- **Raghav** (EMP0033) \u2014 Active\n- **Sneha Reddy** (EMP004) \u2014 Active\n- **Vikram Malhotra** (EMP005) \u2014 Active\n- **Ananya Iyer** (EMP006) \u2014 Active\n- **Kabir Verma** (EMP007) \u2014 Active\n- **Meera Nair** (EMP008) \u2014 Active\n- **Aditya Joshi** (EMP009) \u2014 Active\n- **Kritika Sharma** (EMP010) \u2014 Active\n- **Rahul Sharma** (EMP0100) \u2014 Active\n- **Sneha Patel** (EMP0101) \u2014 Active\n- **Arjun Kumar** (EMP0102) \u2014 Active\n- **Neha Gupta** (EMP0103) \u2014 Active\n- **Vikram Singh** (EMP0104) \u2014 Active"
+  },
+  {
+    "question": "Show career history for EMP001",
+    "status": "success",
+    "response": "Rahul Sharma has not yet accrued any tenure with the company, showing a total service length of 0 days (0.0 years). There are no recorded promotions, role changes, or transfers in his employment history, and consequently no time spent in any specific role. Because he has not been employed long enough to be evaluated for promotion frequency, the system does not consider his career progression to be stalled. All available data points are currently zero or missing."
+  },
+  {
+    "question": "When was EMP001 last promoted?",
+    "status": "success",
+    "response": "Rahul Sharma (EMP001) has no recorded tenure with the company, showing a total length of service of 0 days (0.0 years). Consequently, there are no documented promotions, role changes, or transfers, and no time can be reported for any specific role. Because he has not yet been employed, he has never received a promotion, so the \u201ctime since last promotion\u201d metric is not applicable and his progression is not considered stalled. No additional patterns can be identified due to the absence of data."
+  },
+  {
+    "question": "Who has career stall for more than 4 years?",
+    "status": "success",
+    "response": "No employees are currently stalled (threshold: 4.0+ years without a promotion)."
+  },
+  {
+    "question": "Recommend data scientists in Chennai",
+    "status": "success",
+    "response": "- Priya Sharma (score: 0.5499999999999999)\n- Sneha Patel (score: 0.5499999999999999)\n- Rahul Sharma (score: 0.5)\n- Rahul (score: 0.35)\n- Raghav (score: 0.35)"
+  },
+  {
+    "question": "Build a team of 1 Data Analyst and 1 Manager for a FinTech project",
+    "status": "success",
+    "response": "Team for 'Build a team of 1 Data Analyst and 1 Manager for a FinTech project':\n  Team Lead \u2192 Rahul Sharma (AI) score=0.25\n  Backend Developer \u2192 Ananya Iyer (Engineering) score=0.40\n  Frontend Developer \u2192 Ananya Iyer (Engineering) score=0.55\n  ML Engineer \u2192 Raghav (AI) score=0.55\n  Data Engineer \u2192 Rahul Sharma (AI) score=0.40\n  Data Scientist \u2192 Priya Sharma (AI) score=0.55\n  DevOps Engineer \u2192 Meera Nair (Engineering) score=0.55\n  QA Engineer \u2192 Neha Gupta (Engineering) score=0.55\n  Product Manager \u2192 Rohan Mehta (Finance) score=0.40\n  Security Engineer \u2192 Priya Patel (Engineering) score=0.40"
+  },
+  {
+    "question": "Who should we promote next?",
+    "status": "success",
+    "response": "- Rahul Sharma (score: 0.2)\n- Priya Sharma (score: 0.2)\n- Rahul (score: 0.2)\n- Gokul (score: 0.2)\n- Priya Patel (score: 0.2)"
+  },
+  {
+    "question": "Suggest internal transfers for understaffed departments",
+    "status": "success",
+    "response": "No matching results."
+  },
+  {
+    "question": "Who has high attrition risk?",
+    "status": "success",
+    "response": "- Rahul Sharma (risk: 0.0)\n- Priya Sharma (risk: 0.0)\n- Rahul (risk: 0.0)\n- Gokul (risk: 0.0)\n- Priya Patel (risk: 0.0)"
+  },
+  {
+    "question": "What are the skill gaps for our office?",
+    "status": "success",
+    "response": "The analysis identified four critical skill gaps in our office: Backend Developer, Data Engineer, QA Engineer, and Team Lead. These gaps represent the immediate talent shortfalls that could hinder project delivery and quality assurance. To address them, we recommend prioritizing recruitment for these roles while also launching targeted up\u2011skilling programs for existing staff to build internal capability. Consider partnering with specialized training providers to fast\u2011track Data Engineer and QA Engineer competencies. If any further data is needed, additional assessments can be scheduled to refine the hiring plan."
+  },
+  {
+    "question": "Recommend transfers to Engineering and find the skill gaps there.",
+    "status": "success",
+    "response": "The request was to identify internal candidates for transfer to Engineering and to pinpoint the department\u2019s current skill gaps. Because the first step \u2013 the SQL query that would retrieve candidate data \u2013 failed due to an empty query, we have no concrete employee names, skill inventories, or gap metrics to report. Consequently, the second step (skill\u2011gap analysis) could not be completed, and the final synthesis was omitted. To move forward, a correctly\u2011structured query should be run to pull relevant employee profiles and Engineering\u2019s skill requirements; once that data is available, we can generate precise transfer recommendations and quantify any remaining gaps and associated hiring costs."
+  }
+]

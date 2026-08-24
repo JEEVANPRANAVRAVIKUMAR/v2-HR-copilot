@@ -1,0 +1,1 @@
+Migration failed: {'message': 'Could not find the function public.execute_sql(query) in the schema cache', 'code': 'PGRST202', 'hint': None, 'details': 'Searched for the function public.execute_sql with parameter query or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache.'}

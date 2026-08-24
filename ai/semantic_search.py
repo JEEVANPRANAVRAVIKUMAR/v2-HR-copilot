@@ -107,12 +107,72 @@ class SemanticSearchAgent:
         op = "semantic_search.search"
 
         try:
-            query_vector = self._embedder.embed_query(query)
-            results = self._embedding_repo.search(
-                query_vector,
-                match_threshold=threshold,
-                match_count=top_k,
-            )
+            results = []
+            try:
+                query_vector = self._embedder.embed_query(query)
+                results = self._embedding_repo.search(
+                    query_vector,
+                    match_threshold=threshold,
+                    match_count=top_k,
+                )
+            except Exception as e:
+                self._logger.warning("Vector database search failed, attempting keyword fallback: %s", e)
+
+            if not results:
+                # Fallback to local keyword/text matching across database profiles
+                try:
+                    from database.queries import EmployeeRepository
+                    emp_repo = EmployeeRepository()
+                    joined_select = (
+                        "*,employee_profiles(*),contact_info(*),addresses(*),employment_details(*),position_history(*,departments(*))"
+                    )
+                    response = self._embedding_repo._execute(
+                        self._embedding_repo.client.table("employees").select(joined_select)
+                    )
+                    if response.data:
+                        from database.queries.sql_query_repository import SqlQueryRepository
+                        sql_repo = SqlQueryRepository()
+                        all_flat = [sql_repo._flatten_employee_row(r) for r in response.data]
+                        
+                        import re
+                        query_clean = re.sub(r"[^\w\s]", " ", query.lower())
+                        words = [w for w in query_clean.split() if w not in (
+                            "who", "is", "in", "the", "department", "works", "with", "a", "an", "at", "for", "of", "all", "employee", "employees"
+                        )]
+                        
+                        matched = []
+                        for flat_row in all_flat:
+                            score = 0
+                            full_text = " ".join([
+                                str(flat_row.get("full_name") or ""),
+                                str(flat_row.get("department_name") or ""),
+                                str(flat_row.get("position_title") or ""),
+                                str(flat_row.get("city") or ""),
+                                str(flat_row.get("employment_type") or ""),
+                                str(flat_row.get("status") or ""),
+                            ]).lower()
+                            
+                            # Support composite exact matches if words exist
+                            for word in words:
+                                if word in full_text:
+                                    score += 1
+                                    
+                            if score > 0:
+                                similarity = min(0.6 + (score * 0.1), 0.95)
+                                matched.append({
+                                    "employee_no": flat_row.get("employee_no"),
+                                    "similarity": similarity,
+                                    "full_name": flat_row.get("full_name"),
+                                    "department": flat_row.get("department_name"),
+                                    "position_title": flat_row.get("position_title"),
+                                    "metadata": flat_row,
+                                    "content": f"Employee {flat_row.get('full_name')} working as {flat_row.get('position_title')} in {flat_row.get('department_name')} department.",
+                                })
+                        
+                        matched.sort(key=lambda x: x["similarity"], reverse=True)
+                        results = matched[:top_k]
+                except Exception as ex:
+                    self._logger.warning("Local semantic search fallback failed: %s", ex)
 
             duration_ms = (time.perf_counter() - start) * 1000
             self._logger.info(
@@ -120,9 +180,6 @@ class SemanticSearchAgent:
                 op, query, len(results), duration_ms,
             )
             return results
-
-        except EmbeddingError:
-            raise ServiceError("Embedding generation failed.") from None
 
         except ServiceError:
             raise

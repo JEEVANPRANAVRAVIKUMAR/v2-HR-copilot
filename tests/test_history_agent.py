@@ -11,12 +11,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from logging import Logger
-from unittest.mock import create_autospec, MagicMock
+from unittest.mock import create_autospec
 
 import pytest
 
 from ai import GroqLLM, HistoryAgent
-from database.queries import EmployeeHistoryRepository
 from models.employee import Employee
 from models.history import (
     CareerStats,
@@ -153,6 +152,19 @@ class TestPerEmployeeNarration:
         result = agent.answer("Show me Rahul's history")
         employee_service.search_employees.assert_called()
         assert "Rahul" in result
+
+    def test_resolves_lowercase_multiword_name(self, agent, employee_service, history_service, llm):
+        emp = _make_employee(employee_no="EMP0104", full_name="Vikram Singh")
+        employee_service.search_employees.return_value = [emp]
+        history_service.build_timeline.return_value = _timeline(
+            employee_no="EMP0104", full_name="Vikram Singh",
+        )
+        llm.generate.return_value = "Vikram Singh's position history."
+
+        result = agent.answer("postion history of vikram singh")
+
+        assert result == "Vikram Singh's position history."
+        employee_service.search_employees.assert_called_with(query="vikram singh")
 
     def test_no_employee_found_returns_friendly_message(self, agent, employee_service, llm):
         employee_service.get_employee_by_no.return_value = None

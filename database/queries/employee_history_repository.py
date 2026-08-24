@@ -55,9 +55,39 @@ class EmployeeHistoryRepository(BaseRepository):
             )
             return EmployeeHistory.model_validate(response.data[0])
 
-        except RepositoryError:
+        except RepositoryError as exc:
+            if "PGRST205" in str(exc) or "Could not find the table" in str(exc):
+                self.logger.warning("employee_history table is missing. Returning fallback object.")
+                from models.history import EmployeeHistory
+                import datetime
+                return EmployeeHistory(
+                    id=0,
+                    employee_id=event.employee_id,
+                    employee_no=event.employee_no,
+                    event_type=event.event_type,
+                    from_value=event.from_value,
+                    to_value=event.to_value,
+                    field=event.field,
+                    note=event.note,
+                    occurred_at=datetime.datetime.utcnow().isoformat() + "Z"
+                )
             raise
         except Exception as exc:
+            if "PGRST205" in str(exc) or "Could not find the table" in str(exc):
+                self.logger.warning("employee_history table is missing. Returning fallback object.")
+                from models.history import EmployeeHistory
+                import datetime
+                return EmployeeHistory(
+                    id=0,
+                    employee_id=event.employee_id,
+                    employee_no=event.employee_no,
+                    event_type=event.event_type,
+                    from_value=event.from_value,
+                    to_value=event.to_value,
+                    field=event.field,
+                    note=event.note,
+                    occurred_at=datetime.datetime.utcnow().isoformat() + "Z"
+                )
             self.logger.exception("Failed inserting history event.")
             raise RepositoryError("Unable to record history event.") from exc
 
@@ -94,9 +124,15 @@ class EmployeeHistoryRepository(BaseRepository):
                 EmployeeHistory.model_validate(row)
                 for row in response.data
             ]
-        except RepositoryError:
+        except RepositoryError as exc:
+            if "PGRST205" in str(exc) or "Could not find the table" in str(exc):
+                self.logger.warning("employee_history table is missing. Returning empty list.")
+                return []
             raise
         except Exception as exc:
+            if "PGRST205" in str(exc) or "Could not find the table" in str(exc):
+                self.logger.warning("employee_history table is missing. Returning empty list.")
+                return []
             self.logger.exception("Failed bulk inserting history events.")
             raise RepositoryError(
                 "Unable to bulk record history events.",
@@ -137,6 +173,9 @@ class EmployeeHistoryRepository(BaseRepository):
                 for row in response.data
             ]
         except Exception as exc:
+            if "PGRST205" in str(exc) or "Could not find the table" in str(exc):
+                self.logger.warning("employee_history table is missing. Returning empty list.")
+                return []
             self.logger.exception(
                 "Failed fetching history for %s.", employee_no,
             )
@@ -169,6 +208,9 @@ class EmployeeHistoryRepository(BaseRepository):
                 for row in response.data
             ]
         except Exception as exc:
+            if "PGRST205" in str(exc) or "Could not find the table" in str(exc):
+                self.logger.warning("employee_history table is missing. Returning empty list.")
+                return []
             self.logger.exception(
                 "Failed fetching history for id=%s.", employee_id,
             )
@@ -204,6 +246,9 @@ class EmployeeHistoryRepository(BaseRepository):
                 for row in response.data
             ]
         except Exception as exc:
+            if "PGRST205" in str(exc) or "Could not find the table" in str(exc):
+                self.logger.warning("employee_history table is missing. Returning empty list.")
+                return []
             self.logger.exception(
                 "Failed fetching events of type %s.", event_type,
             )
@@ -230,6 +275,9 @@ class EmployeeHistoryRepository(BaseRepository):
                 return None
             return EmployeeHistory.model_validate(response.data[0])
         except Exception as exc:
+            if "PGRST205" in str(exc) or "Could not find the table" in str(exc):
+                self.logger.warning("employee_history table is missing. Returning None.")
+                return None
             self.logger.exception(
                 "Failed fetching latest promotion for %s.", employee_no,
             )

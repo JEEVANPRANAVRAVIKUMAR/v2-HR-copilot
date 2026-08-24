@@ -13,7 +13,7 @@ import pytest
 from ai import CrudAgent, GroqLLM
 from models.employee import Employee
 from services import EmployeeService
-from utils.exceptions import EmployeeNotFoundError, ServiceError
+from utils.exceptions import ServiceError
 
 
 @pytest.fixture
@@ -83,6 +83,26 @@ class TestLookup:
 
         result = agent.process("Show me MISSING")
         assert "not found" in result
+
+    def test_falls_back_to_name_lookup_when_llm_operation_is_unknown(
+        self, agent, llm, employee_service,
+    ):
+        llm.generate.return_value = _make_json_response({
+            "operation": "unknown",
+            "fields": {},
+        })
+        emp = Employee.model_validate({
+            "employee_no": "EMP0104",
+            "full_name": "Vikram Singh",
+            "is_active": True,
+            "id": 104,
+        })
+        employee_service.search_employees.return_value = [emp]
+
+        result = agent.process("who is vikram singh")
+
+        assert "Vikram Singh" in result
+        employee_service.search_employees.assert_called_with(query="vikram singh")
 
 
 # ====================================================================

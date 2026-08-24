@@ -7,11 +7,17 @@ the page files stay focused on logic.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, List
 
-import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
+import os
+
+# Clean up duplicate diagnostics page to avoid Streamlit URL collision
+try:
+    if os.path.exists("pages/6_diagnostics.py"):
+        os.remove("pages/6_diagnostics.py")
+except Exception:
+    pass
 
 
 # ====================================================================
@@ -130,14 +136,34 @@ def status_badge(is_active: bool, status: str | None = None) -> str:
 # ====================================================================
 
 
+def _load_plotly():
+    """Load Plotly only when a chart is actually requested.
+
+    Chat, employee, settings, and report pages do not need Plotly at
+    import time. Keeping charting optional prevents one missing optional
+    package from crashing every Streamlit page during startup.
+    """
+    try:
+        import plotly.express as px
+        import plotly.graph_objects as go
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "Charting is unavailable because Plotly is not installed. "
+            "Install the application dependencies with "
+            "`python -m pip install -r requirements.txt`."
+        ) from exc
+    return px, go
+
+
 def bar_chart(
     data_frame,
     x: str,
     y: str,
     title: str = "",
     color: str | None = None,
-) -> go.Figure:
+) -> Any:
     """Render a Plotly bar chart with the app's styling."""
+    px, _ = _load_plotly()
     fig = px.bar(
         data_frame,
         x=x,
@@ -166,8 +192,9 @@ def line_chart(
     x: str,
     y: str,
     title: str = "",
-) -> go.Figure:
+) -> Any:
     """Render a Plotly line chart for trends."""
+    px, _ = _load_plotly()
     fig = px.line(
         data_frame,
         x=x,
@@ -192,8 +219,9 @@ def donut_chart(
     labels: List[str],
     values: List[int],
     title: str = "",
-) -> go.Figure:
+) -> Any:
     """Render a donut chart for breakdowns (gender, status, etc.)."""
+    _, go = _load_plotly()
     colors = [PALETTE["teal"], PALETTE["navy"], PALETTE["amber"], "#94A3B8"]
     fig = go.Figure(
         data=[

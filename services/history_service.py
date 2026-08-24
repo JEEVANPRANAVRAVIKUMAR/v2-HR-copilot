@@ -197,11 +197,29 @@ class EmployeeHistoryService:
 
             now_dt = now or datetime.now(timezone.utc)
 
+            # Retrieve joining date fallback
+            profile = None
+            joining_dt = None
+            try:
+                from database.queries import EmployeeRepository
+                emp_repo = EmployeeRepository()
+                profile = emp_repo.get_full_profile(employee_no)
+                if profile and profile.joining_date:
+                    joining_dt = datetime(
+                        profile.joining_date.year,
+                        profile.joining_date.month,
+                        profile.joining_date.day,
+                        tzinfo=timezone.utc
+                    )
+            except Exception:
+                pass
+
             entries = [
                 self._row_to_entry(r) for r in chronological
             ]
             stats = self._compute_stats(
                 chronological, now_dt, stall_threshold_days,
+                joining_dt=joining_dt, profile=profile,
             )
 
             timeline = EmployeeTimeline(
@@ -236,21 +254,24 @@ class EmployeeHistoryService:
         rows: List[EmployeeHistory],
         now: datetime,
         stall_threshold_days: float,
+        joining_dt: datetime | None = None,
+        profile: Any = None,
     ) -> CareerStats:
         """
         Compute tenure, role durations, promotion counts, and
         stall detection from a chronological list of audit rows.
         """
-        if not rows:
-            return CareerStats(stall_threshold_days=stall_threshold_days)
+        # Determine the earliest date (hire/origin).
+        earliest_dt = joining_dt
+        if earliest_dt is None and rows:
+            earliest = rows[0].occurred_at
+            if earliest is not None:
+                earliest_dt = self._as_datetime(earliest)
+                if earliest_dt.tzinfo is None:
+                    earliest_dt = earliest_dt.replace(tzinfo=timezone.utc)
 
-        # Use the earliest event timestamp as the hire/origin.
-        earliest = rows[0].occurred_at
-        if earliest is None:
+        if earliest_dt is None:
             return CareerStats(stall_threshold_days=stall_threshold_days)
-        earliest_dt = self._as_datetime(earliest)
-        if earliest_dt.tzinfo is None:
-            earliest_dt = earliest_dt.replace(tzinfo=timezone.utc)
 
         total_tenure_days = (now - earliest_dt).total_seconds() / 86400.0
 
@@ -293,6 +314,13 @@ class EmployeeHistoryService:
                 time_in_each_role[role] = (
                     time_in_each_role.get(role, 0.0) + duration
                 )
+        elif joining_dt and profile and profile.position_title:
+            # Assume their entire tenure is in their current role
+            role = profile.position_title
+            duration = (now - joining_dt).total_seconds() / 86400.0
+            if duration < 0:
+                duration = 0.0
+            time_in_each_role[role] = duration
 
         # Promotions
         promotion_rows = [

@@ -13,6 +13,7 @@ answer questions like "whose career has stalled for 4+ years?".
 from __future__ import annotations
 
 import json
+import re
 import time
 from logging import Logger
 from typing import Any, Dict, List
@@ -21,7 +22,6 @@ from ai.llm import GroqLLM
 from models.history import (
     CareerStats,
     EmployeeTimeline,
-    HistoryEventType,
     TimelineEntry,
 )
 from services import EmployeeService
@@ -406,22 +406,27 @@ def _extract_names(message: str) -> List[str]:
     candidates to bound the search cost.
     """
     stop_words = {
-        "show", "me", "history", "career", "who", "whose", "the",
-        "for", "of", "is", "has", "been", "was", "and", "or",
-        "with", "from", "to", "at", "in", "on", "by", "stalled",
-        "stalling", "promotion", "promoted", "years", "year",
-        "ago", "since", "last", "tell", "give", "what", "summary",
+        "show", "me", "history", "career", "position", "postion", "timeline",
+        "who", "whose", "the", "for", "of", "is", "has", "been",
+        "was", "and", "or", "with", "from", "to", "at", "in", "on",
+        "by", "stalled", "stalling", "promotion", "promoted", "years",
+        "year", "ago", "since", "last", "tell", "give", "what",
+        "summary", "employee", "employees", "details", "about",
     }
+    words = [
+        word.lower()
+        for word in re.findall(r"[A-Za-z]+", message)
+        if word.lower() not in stop_words
+    ]
+    if not words:
+        return []
+
+    # Prefer the full name phrase so "Vikram Singh" is not resolved as
+    # the first employee whose name merely contains "Vikram".
     candidates: List[str] = []
-    for tok in message.split():
-        cleaned = "".join(
-            c for c in tok if c.isalpha() or c.isspace()
-        ).strip()
-        if not cleaned:
-            continue
-        if cleaned[0].isupper() and cleaned.lower() not in stop_words:
-            if len(cleaned) >= 2:
-                candidates.append(cleaned)
+    if len(words) > 1:
+        candidates.append(" ".join(words))
+    candidates.extend(words)
     return candidates[:3]
 
 

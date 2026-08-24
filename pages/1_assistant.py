@@ -11,6 +11,7 @@ Tier 2 (planner): complex multi-step questions are decomposed by the
 
 from __future__ import annotations
 
+import logging
 import streamlit as st
 from ui_helpers import load_css, render_sidebar, render_chat_message, empty_state
 
@@ -145,8 +146,9 @@ def init_ai() -> bool:
         st.session_state.chat_initialized = True
         return True
 
-    except Exception as exc:
-        st.warning(f"AI components not available: {exc}")
+    except Exception:
+        logging.getLogger("assistant").exception("AI initialization failed")
+        st.warning("AI components are not available right now. Check the application logs.")
         return False
 
 
@@ -182,7 +184,11 @@ def _agent_registry() -> dict:
 
     def _teambuild_fn(msg, ctx, prev):
         r = qa.team_builder.build(msg)
-        return r["summary"]
+        return (
+            r.get("summary", "No team-building summary was returned.")
+            if isinstance(r, dict)
+            else str(r)
+        )
 
     def _promotion_fn(msg, ctx, prev):
         r = qa.promotion_analyzer.analyze()
@@ -198,12 +204,7 @@ def _agent_registry() -> dict:
 
     def _skillgap_fn(msg, ctx, prev):
         r = qa.skill_gap_agent.analyze(msg)
-        return (
-            f"Skill gap: {r.get('required_roles',[])} needed, "
-            f"estimated {r.get('estimated_hires',0)} hires "
-            f"at ${r.get('estimated_cost',0):,.0f} "
-            f"(placeholder cost — NO salary data exists)."
-        )
+        return _format_skill_gap(r)
 
     def _insights_fn(msg, ctx, prev):
         r = qa.insight_agent.full_scorecard()
@@ -246,10 +247,10 @@ def dispatch_message(user_message: str) -> str:
                 plan_summary = "\n\n---\n**Plan executed:**\n"
                 for s in result["plan"]:
                     plan_summary += (
-                        f"- Step {s['step']}: **{s['agent']}** → "
+                        f"- Step {s.get('step', '?')}: **{s.get('agent', '?')}** → "
                         f"_{s.get('sub_question','?')}_\n"
                     )
-            response = result["answer"] + plan_summary
+            response = str(result["answer"]) + plan_summary
             memory.add_turn("assistant", response, intent="Planner")
             return response
         # Fall through: if planner returns empty, use Tier 1.
@@ -302,14 +303,9 @@ def dispatch_message(user_message: str) -> str:
             )
         ),
         "SkillGap": (
-            lambda: (
-                lambda r: (
-                    f"Skill gap: {r.get('required_roles',[])} needed, "
-                    f"estimated {r.get('estimated_hires',0)} hires "
-                    f"at ${r.get('estimated_cost',0):,.0f} "
-                    f"(placeholder cost — NO salary data exists)."
-                )
-            )(st.session_state.skill_gap_agent.analyze(user_message))
+            lambda: _format_skill_gap(
+                st.session_state.skill_gap_agent.analyze(user_message)
+            )
         ),
         "Insights": (
             lambda: json_dump_simple(
@@ -321,7 +317,7 @@ def dispatch_message(user_message: str) -> str:
             # passing is_complex, run the planner anyway.
             lambda: (
                 lambda r: (
-                    r.get("answer", "Planner returned no answer.")
+                    str(r.get("answer") or "Planner returned no answer.")
                     + (
                         "\n\n---\n**Plan executed:**\n"
                         + "\n".join(
@@ -370,7 +366,7 @@ def _extract_role(message: str) -> str:
     # Fallback: grab the first capitalised word that looks like a role.
     for tok in message.split():
         c = tok.strip(",.!?:;\"'")
-        if c[0].isupper() and len(c) >= 3 and c.lower() not in {
+        if len(c) >= 3 and c[0].isupper() and c.lower() not in {
             "the", "and", "for", "with", "from", "recommend",
             "show", "find", "give", "best", "new",
         }:
@@ -402,14 +398,28 @@ def _format_scored_list(
     """Render a list of scored dicts into readable text."""
     if not items:
         return "No matching results."
+    if isinstance(items, dict):
+        items = [items]
+    if not isinstance(items, (list, tuple)):
+        return str(items)
     lines = []
     for item in items[:top_n]:
+        if not isinstance(item, dict):
+            lines.append(str(item))
+            continue
         exp = item.get("explanation")
+        score = item.get("score")
+        try:
+            score_text = f"{float(score):.2f}" if score is not None else ""
+        except (TypeError, ValueError):
+            score_text = str(score) if score not in (None, "") else ""
+        name = item.get("full_name", "?")
+        fallback = f"{name} ({score_text})" if score_text else str(name)
         summary = (
             exp.summary
             if exp and hasattr(exp, "summary") and exp.summary
             else (
-                f"{item.get('full_name','?')} ({item.get('score',''):.2f})"
+                fallback
                 if item.get("full_name")
                 else str(item)
             )
@@ -422,27 +432,56 @@ def json_dump_simple(obj: dict) -> str:
     """Compact JSON-like summary of the insight scorecard."""
     import json
     # Build a compact summary dict, stripping the heavy explanation objects.
+    obj = obj if isinstance(obj, dict) else {}
+
+    def _section(name: str) -> dict:
+        value = obj.get(name)
+        return value if isinstance(value, dict) else {}
+
+    forecast_data = _section("hiring_forecast").get("data")
+    if not isinstance(forecast_data, dict):
+        forecast_data = {}
+
     lite = {
         "headcount": obj.get("total_headcount"),
         "avg_tenure_years": obj.get("avg_tenure_years"),
         "fastest_growing": (
-            obj.get("fastest_growing", {}).get("data", [])[:1]
-            if obj.get("fastest_growing")
+            _section("fastest_growing").get("data", [])[:1]
+            if isinstance(_section("fastest_growing").get("data", []), list)
             else []
         ),
         "largest_hub": (
-            obj.get("largest_hub", {}).get("data", [])[:1]
-            if obj.get("largest_hub")
+            _section("largest_hub").get("data", [])[:1]
+            if isinstance(_section("largest_hub").get("data", []), list)
             else []
         ),
         "understaffed_count": len(
-            obj.get("understaffed", {}).get("data", [])
+            _section("understaffed").get("data", [])
+            if isinstance(_section("understaffed").get("data", []), list)
+            else []
         ),
-        "hiring_forecast_pct": obj.get("hiring_forecast", {}).get(
-            "data", {},
-        ).get("projected_next_year_hires", 0),
+        "hiring_forecast_pct": forecast_data.get("projected_next_year_hires", 0),
     }
     return json.dumps(lite, indent=2, default=str)
+
+
+def _format_currency(value: object) -> str:
+    """Format optional numeric cost values without breaking a chat turn."""
+    try:
+        return f"${float(value or 0):,.0f}"
+    except (TypeError, ValueError):
+        return "$0"
+
+
+def _format_skill_gap(result: object) -> str:
+    """Render an optional skill-gap result without assuming model fields."""
+    data = result if isinstance(result, dict) else {}
+    return (
+        f"Skill gap: {data.get('required_roles', [])} needed, "
+        f"estimated {data.get('estimated_hires', 0)} hires "
+        f"at {_format_currency(data.get('estimated_cost'))} "
+        "(placeholder cost — NO salary data exists)."
+    )
 
 
 # ---- Render chat history ----
@@ -473,8 +512,12 @@ if prompt := st.chat_input("Ask me anything about your workforce..."):
             try:
                 st.session_state.memory.add_turn("user", prompt)
                 response = dispatch_message(prompt)
-            except Exception as exc:
-                response = f"Sorry, I encountered an error: {exc}"
+            except Exception:
+                logging.getLogger("assistant").exception("Chat dispatch failed")
+                response = (
+                    "Sorry, I couldn't complete that request. "
+                    "Please rephrase it or try again."
+                )
 
         st.session_state.messages.append(
             {"role": "assistant", "content": response}

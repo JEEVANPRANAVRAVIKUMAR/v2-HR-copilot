@@ -71,11 +71,14 @@ class AnalyticsRepository(BaseRepository):
             dept_counter: dict[str, int] = {}
             for row in response.data:
                 ph = row.get("position_history")
-                if not ph or len(ph) == 0:
+                if not ph:
+                    continue
+                ph_list = [ph] if isinstance(ph, dict) else (ph if isinstance(ph, list) else [])
+                if len(ph_list) == 0:
                     continue
                 # Get the most recent position
                 sorted_ph = sorted(
-                    ph,
+                    ph_list,
                     key=lambda x: x.get("start_date", ""),
                     reverse=True,
                 )
@@ -109,7 +112,9 @@ class AnalyticsRepository(BaseRepository):
             status_counter: dict[str, int] = {}
             for row in response.data:
                 ed = row.get("employment_details")
-                st = (ed.get("status") or "Unknown") if ed else "Unknown"
+                if isinstance(ed, list) and len(ed) > 0:
+                    ed = ed[0]
+                st = (ed.get("status") or "Unknown") if isinstance(ed, dict) else "Unknown"
                 status_counter[st] = status_counter.get(st, 0) + 1
 
             return sorted(
@@ -140,7 +145,9 @@ class AnalyticsRepository(BaseRepository):
             year_counter: dict[int, int] = {}
             for row in response.data:
                 ed = row.get("employment_details")
-                if not ed:
+                if isinstance(ed, list) and len(ed) > 0:
+                    ed = ed[0]
+                if not isinstance(ed, dict):
                     continue
                 jd = ed.get("joining_date")
                 if jd is None:
@@ -173,7 +180,9 @@ class AnalyticsRepository(BaseRepository):
             month_counter: dict[str, int] = {}
             for row in response.data:
                 ed = row.get("employment_details")
-                if not ed:
+                if isinstance(ed, list) and len(ed) > 0:
+                    ed = ed[0]
+                if not isinstance(ed, dict):
                     continue
                 jd = ed.get("joining_date")
                 if jd is None:
@@ -212,7 +221,9 @@ class AnalyticsRepository(BaseRepository):
             tenures = []
             for row in response.data:
                 ed = row.get("employment_details")
-                if not ed:
+                if isinstance(ed, list) and len(ed) > 0:
+                    ed = ed[0]
+                if not isinstance(ed, dict):
                     continue
                 jd = ed.get("joining_date")
                 if jd is None:
@@ -255,7 +266,9 @@ class AnalyticsRepository(BaseRepository):
 
             for row in response.data:
                 ed = row.get("employment_details")
-                if not ed:
+                if isinstance(ed, list) and len(ed) > 0:
+                    ed = ed[0]
+                if not isinstance(ed, dict):
                     continue
                 jd = ed.get("joining_date")
                 if jd is None:
@@ -306,7 +319,9 @@ class AnalyticsRepository(BaseRepository):
             gender_counter: dict[str, int] = {}
             for row in response.data:
                 ep = row.get("employee_profiles")
-                g = (ep.get("gender") or "Unknown") if ep else "Unknown"
+                if isinstance(ep, list) and len(ep) > 0:
+                    ep = ep[0]
+                g = (ep.get("gender") or "Unknown") if isinstance(ep, dict) else "Unknown"
                 gender_counter[g] = gender_counter.get(g, 0) + 1
 
             return sorted(
@@ -344,7 +359,9 @@ class AnalyticsRepository(BaseRepository):
             dept_counter: dict[str, int] = {}
             for row in response.data:
                 ed = row.get("employment_details")
-                if not ed:
+                if isinstance(ed, list) and len(ed) > 0:
+                    ed = ed[0]
+                if not isinstance(ed, dict):
                     continue
                 jd = ed.get("joining_date")
                 if jd is None:
@@ -355,10 +372,13 @@ class AnalyticsRepository(BaseRepository):
                     continue
 
                 ph = row.get("position_history")
-                if not ph or len(ph) == 0:
+                if not ph:
+                    continue
+                ph_list = [ph] if isinstance(ph, dict) else (ph if isinstance(ph, list) else [])
+                if len(ph_list) == 0:
                     continue
                 sorted_ph = sorted(
-                    ph, key=lambda x: x.get("start_date", ""), reverse=True,
+                    ph_list, key=lambda x: x.get("start_date", ""), reverse=True,
                 )
                 latest = sorted_ph[0]
                 depts = latest.get("departments")
@@ -390,7 +410,9 @@ class AnalyticsRepository(BaseRepository):
             city_counter: dict[str, int] = {}
             for row in response.data:
                 addr = row.get("addresses")
-                c = (addr.get("city") or "Unknown") if addr else "Unknown"
+                if isinstance(addr, list) and len(addr) > 0:
+                    addr = addr[0]
+                c = (addr.get("city") or "Unknown") if isinstance(addr, dict) else "Unknown"
                 city_counter[c] = city_counter.get(c, 0) + 1
 
             return sorted(

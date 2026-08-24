@@ -365,12 +365,14 @@ class Planner:
         prev_results: List[Dict[str, Any]] = []
 
         for step in plan:
-            step_num = step.get("step", 0)
-            agent_name = step.get("agent", "").strip()
+            raw_step_num = step.get("step", len(results) + 1)
+            try:
+                step_num = int(raw_step_num)
+            except (TypeError, ValueError):
+                step_num = len(results) + 1
+            agent_name = str(step.get("agent") or "").strip()
             sub_q = step.get("sub_question", original_message)
-            dep_on = step.get("depends_on_output_of")
-            purpose = step.get("purpose", "")
-            if not sub_q or sub_q == "?":
+            if not isinstance(sub_q, str) or not sub_q or sub_q == "?":
                 sub_q = original_message
 
             fn = agent_registry.get(agent_name)
@@ -467,10 +469,11 @@ class Planner:
         try:
             data = json.loads(cleaned)
             # Ensure steps is a list.
-            if not isinstance(data.get("steps"), list):
+            if not isinstance(data, dict) or not isinstance(data.get("steps"), list):
                 raise ValueError("not a list")
+            data["steps"] = [step for step in data["steps"] if isinstance(step, dict)]
             return data
-        except (json.JSONDecodeError, ValueError):
+        except (json.JSONDecodeError, TypeError, ValueError):
             # Fallback: a single-step plan so the caller doesn't
             # crash — it will just get a direct LLM answer.
             return {
