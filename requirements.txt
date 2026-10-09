@@ -1,37 +1,24 @@
-streamlit==1.48.0
+# Core Web Application
+streamlit>=1.35.0
 
-groq==0.31.0
+# LLM & AI Services
+groq>=0.9.0
+supabase>=2.4.0
+pydantic>=2.7.0
+pydantic-settings>=2.2.0
+python-dotenv>=1.0.0
 
-supabase==2.17.0
+# Data Science & Analytics
+pandas>=2.0.0,<3.0.0
+numpy>=1.26.0,<3.0.0
+plotly>=5.18.0
 
-sentence-transformers==5.1.0
+# Document & Report Generation
+reportlab>=4.0.0
+openpyxl>=3.1.2
+python-pptx>=0.6.21
 
-torch==2.8.0
-
-transformers==4.55.2
-
-pandas==2.3.1
-
-numpy==2.3.2
-
-plotly==6.3.0
-
-openpyxl==3.1.5
-
-python-pptx==1.0.2
-
-reportlab==4.4.3
-
-python-dotenv==1.1.1
-
-pydantic==2.11.7
-
-pydantic-settings==2.10.1
-
-pytest==8.4.1
-
-black==25.1.0
-
-ruff==0.12.8
-
-mypy==1.17.1
+# Embeddings & NLP (Semantic Search)
+sentence-transformers>=2.7.0
+transformers>=4.40.0
+torch>=2.2.0

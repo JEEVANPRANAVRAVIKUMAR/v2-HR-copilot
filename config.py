@@ -14,6 +14,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Seamlessly load Streamlit Community Cloud secrets into os.environ if available
+try:
+    import streamlit as _st
+    if hasattr(_st, "secrets"):
+        for _k, _v in _st.secrets.items():
+            if isinstance(_v, str) and _k not in os.environ:
+                os.environ[_k] = _v
+except Exception:
+    pass
+
 try:
     from pydantic_settings import BaseSettings, SettingsConfigDict
     from pydantic import Field
