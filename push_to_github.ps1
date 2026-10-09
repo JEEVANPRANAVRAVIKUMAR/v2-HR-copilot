@@ -20,9 +20,9 @@ git add .
 # Commit changes
 git commit -m "docs: enhanced enterprise README, multi-agent DAG architecture, and QA benchmark documentation"
 
-# Push to main branch
+# Push to main branch (force push to overwrite remote initial commit)
 git branch -M main
-git push -u origin main
+git push -u origin main --force
 
 Write-Host "================================================" -ForegroundColor Green
 Write-Host "✅ Repository successfully pushed to GitHub!" -ForegroundColor Green
