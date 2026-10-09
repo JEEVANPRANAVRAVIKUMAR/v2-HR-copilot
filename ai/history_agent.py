@@ -327,17 +327,27 @@ class HistoryAgent:
         """
         Send the timeline + stats to the LLM for narration.
         """
-        prompt = HISTORY_NARRATION_PROMPT.format(
-            employee_name=timeline.full_name or "(unknown)",
-            employee_no=timeline.employee_no,
-            timeline=_format_timeline_for_prompt(timeline.events),
-            stats=_format_stats_for_prompt(timeline.stats),
-            stall_threshold_years=stall_threshold_years,
-        )
-        messages = [{"role": "user", "content": prompt}]
-        return self._llm.generate(
-            messages, temperature=0.2, max_tokens=512,
-        ).strip()
+        try:
+            prompt = HISTORY_NARRATION_PROMPT.format(
+                employee_name=timeline.full_name or "(unknown)",
+                employee_no=timeline.employee_no,
+                timeline=_format_timeline_for_prompt(timeline.events),
+                stats=_format_stats_for_prompt(timeline.stats),
+                stall_threshold_years=stall_threshold_years,
+            )
+            messages = [{"role": "user", "content": prompt}]
+            return self._llm.generate(
+                messages, temperature=0.2, max_tokens=512,
+            ).strip()
+        except Exception as exc:
+            self._logger.warning("History narration LLM call failed (%s), formatting timeline directly.", exc)
+            ev_lines = [
+                f"- **{e.event_type.value.upper()}** ({e.event_date.strftime('%Y-%m-%d')}): {e.description}"
+                for e in timeline.events
+            ]
+            tenure_yr = (timeline.stats.total_tenure_days or 0) / 365.25
+            header = f"### 📅 Career Timeline: **{timeline.full_name or timeline.employee_no}**\n- **Total Tenure:** {tenure_yr:.1f} years | **Promotions:** {timeline.stats.promotions_count}\n\n"
+            return header + "\n".join(ev_lines)
 
     def _narrate_stalled(
         self,
@@ -369,11 +379,19 @@ class HistoryAgent:
                 f"(threshold: {stall_threshold_years}+ years without "
                 f"a promotion)."
             )
-        return self._llm.generate(
-            [{"role": "user", "content": prompt}],
-            temperature=0.2,
-            max_tokens=512,
-        ).strip()
+        try:
+            return self._llm.generate(
+                [{"role": "user", "content": prompt}],
+                temperature=0.2,
+                max_tokens=512,
+            ).strip()
+        except Exception as exc:
+            self._logger.warning("Stall narration LLM call failed (%s), formatting stalled list directly.", exc)
+            lines = [
+                f"- **{s['full_name']}** (`{s['employee_no']}`): {s['time_since_last_promotion_days'] // 365} years in current role without promotion"
+                for s in stalled
+            ]
+            return f"### ⚠️ Career Stall Alert ({len(stalled)} employees flagged):\n\n" + "\n".join(lines)
 
 
 # =====================================================================

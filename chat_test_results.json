@@ -2,126 +2,151 @@
   {
     "question": "How many employees are in the database?",
     "status": "success",
-    "response": "The organization\u2019s current total headcount is 40 employees. This figure represents the total number of staff members on the payroll at this time."
+    "response": "The workforce snapshot indicates a total headcount of 42 employees. This figure represents the current size of the organization. No additional trend information is provided.",
+    "duration": 6.69
   },
   {
     "question": "List all employees in the AI department.",
     "status": "success",
-    "response": "There are no employee records for the AI department in the provided data. Please try a different query or check if the data source includes the AI department information."
+    "response": "Found 42 matching record(s):\n\n\u2022 **Rahul Sharma** (`EMP001`) \u2014 Data Analyst \u2014 AI \u2014 Active\n\u2022 **Priya Patel** (`EMP002`) \u2014 Senior Software Engineer \u2014 Engineering \u2014 Active\n\u2022 **Rohan Mehta** (`EMP003`) \u2014 Finance Manager \u2014 Finance \u2014 Active\n\u2022 **Sneha Reddy** (`EMP004`) \u2014 HR Specialist \u2014 HR \u2014 Active\n\u2022 **Vikram Malhotra** (`EMP005`) \u2014 AI Researcher \u2014 AI \u2014 Active\n\u2022 **Ananya Iyer** (`EMP006`) \u2014 Frontend Developer \u2014 Engineering \u2014 Active\n\u2022 **Kabir Verma** (`EMP007`) \u2014 Marketing Director \u2014 Marketing \u2014 Active\n\u2022 **Meera Nair** (`EMP008`) \u2014 DevOps Engineer \u2014 Engineering \u2014 Active\n\u2022 **Aditya Joshi** (`EMP009`) \u2014 Financial Analyst \u2014 Finance \u2014 Active\n\u2022 **Kritika Sharma** (`EMP010`) \u2014 Talent Acquisition Specialist \u2014 HR \u2014 Active\n\u2022 **Arjun Das** (`EMP011`) \u2014 Machine Learning Engineer \u2014 AI \u2014 Active\n\u2022 **Neha Gupta** (`EMP012`) \u2014 QA Automation Engineer \u2014 Engineering \u2014 Active\n\u2022 **Priya Sharma** (`EMP0014`) \u2014 Data Scientist \u2014 AI \u2014 Active\n\u2022 **employee gopal** (`EMP018`) \u2014 Active\n\u2022 **Gokul** (`EMP0019`) \u2014 Active",
+    "duration": 6.69
   },
   {
     "question": "Who are the managers?",
     "status": "success",
-    "response": "The provided data does not include any information about employee roles or titles, so I cannot identify who the managers are. Please try a different query that includes role or position details."
+    "response": "Found 42 matching record(s):\n\n\u2022 **Rahul Sharma** (`EMP001`) \u2014 Data Analyst \u2014 AI \u2014 Active\n\u2022 **Priya Patel** (`EMP002`) \u2014 Senior Software Engineer \u2014 Engineering \u2014 Active\n\u2022 **Rohan Mehta** (`EMP003`) \u2014 Finance Manager \u2014 Finance \u2014 Active\n\u2022 **Sneha Reddy** (`EMP004`) \u2014 HR Specialist \u2014 HR \u2014 Active\n\u2022 **Vikram Malhotra** (`EMP005`) \u2014 AI Researcher \u2014 AI \u2014 Active\n\u2022 **Ananya Iyer** (`EMP006`) \u2014 Frontend Developer \u2014 Engineering \u2014 Active\n\u2022 **Kabir Verma** (`EMP007`) \u2014 Marketing Director \u2014 Marketing \u2014 Active\n\u2022 **Meera Nair** (`EMP008`) \u2014 DevOps Engineer \u2014 Engineering \u2014 Active\n\u2022 **Aditya Joshi** (`EMP009`) \u2014 Financial Analyst \u2014 Finance \u2014 Active\n\u2022 **Kritika Sharma** (`EMP010`) \u2014 Talent Acquisition Specialist \u2014 HR \u2014 Active\n\u2022 **Arjun Das** (`EMP011`) \u2014 Machine Learning Engineer \u2014 AI \u2014 Active\n\u2022 **Neha Gupta** (`EMP012`) \u2014 QA Automation Engineer \u2014 Engineering \u2014 Active\n\u2022 **Priya Sharma** (`EMP0014`) \u2014 Data Scientist \u2014 AI \u2014 Active\n\u2022 **employee gopal** (`EMP018`) \u2014 Active\n\u2022 **Gokul** (`EMP0019`) \u2014 Active",
+    "duration": 6.61
   },
   {
     "question": "How many active employees are there?",
-    "status": "error",
-    "error": "Failed to parse router response: Unterminated string starting at: line 3 column 16 (char 42)"
+    "status": "success",
+    "response": "The workforce snapshot shows a total of 42 employees. Of these, 36 (approximately 86%) are classified as Active, while 6 (about 14%) have an Unknown status. No additional trend information is provided in the data.",
+    "duration": 6.15
   },
   {
     "question": "What is the average tenure of employees?",
     "status": "success",
-    "response": "The average employee tenure in the workforce is 4.23 years. This figure represents the typical length of service for staff across the organization."
+    "response": "The workforce analytics snapshot indicates an average tenure of 4.25 years among employees. This figure reflects the typical duration of employment within the organization.",
+    "duration": 6.72
   },
   {
     "question": "Which department has the most employees?",
     "status": "success",
-    "response": "The workforce snapshot shows a total of 27 employees across five departments. The AI department has the largest headcount with 10 staff members, while Finance and HR each have 6 employees. Engineering comprises 4 employees, and Marketing has the smallest representation with just 1 employee."
+    "response": "The workforce snapshot shows that the AI department is the largest with 11 employees, followed by Finance and HR, each with 6 employees. Engineering has 4 employees, while Marketing has the smallest presence with only 1 employee. Overall, the data indicates a strong concentration in AI, with a moderate representation in Finance and HR, and minimal staffing in Engineering and Marketing.",
+    "duration": 6.76
   },
   {
     "question": "How many employees are in Chennai?",
-    "status": "error",
-    "error": "Failed to parse router response: Unterminated string starting at: line 3 column 16 (char 42)"
+    "status": "success",
+    "response": "Found 42 matching record(s):\n\n\u2022 **Rahul Sharma** (`EMP001`) \u2014 Data Analyst \u2014 AI \u2014 Active\n\u2022 **Priya Patel** (`EMP002`) \u2014 Senior Software Engineer \u2014 Engineering \u2014 Active\n\u2022 **Rohan Mehta** (`EMP003`) \u2014 Finance Manager \u2014 Finance \u2014 Active\n\u2022 **Sneha Reddy** (`EMP004`) \u2014 HR Specialist \u2014 HR \u2014 Active\n\u2022 **Vikram Malhotra** (`EMP005`) \u2014 AI Researcher \u2014 AI \u2014 Active\n\u2022 **Ananya Iyer** (`EMP006`) \u2014 Frontend Developer \u2014 Engineering \u2014 Active\n\u2022 **Kabir Verma** (`EMP007`) \u2014 Marketing Director \u2014 Marketing \u2014 Active\n\u2022 **Meera Nair** (`EMP008`) \u2014 DevOps Engineer \u2014 Engineering \u2014 Active\n\u2022 **Aditya Joshi** (`EMP009`) \u2014 Financial Analyst \u2014 Finance \u2014 Active\n\u2022 **Kritika Sharma** (`EMP010`) \u2014 Talent Acquisition Specialist \u2014 HR \u2014 Active\n\u2022 **Arjun Das** (`EMP011`) \u2014 Machine Learning Engineer \u2014 AI \u2014 Active\n\u2022 **Neha Gupta** (`EMP012`) \u2014 QA Automation Engineer \u2014 Engineering \u2014 Active\n\u2022 **Priya Sharma** (`EMP0014`) \u2014 Data Scientist \u2014 AI \u2014 Active\n\u2022 **employee gopal** (`EMP018`) \u2014 Active\n\u2022 **Gokul** (`EMP0019`) \u2014 Active",
+    "duration": 6.17
   },
   {
     "question": "Find a data scientist who knows machine learning.",
     "status": "success",
-    "response": "I\u2019m sorry, but there are no employees in the system who match the description \u201cdata scientist who knows machine learning.\u201d If you\u2019d like to broaden the search criteria or try a different role, just let me know!"
+    "response": "Two employees fit the description: **Priya\u202fSharma** and **Sneha\u202fPatel**. Both hold the title of **Data Scientist** in the **AI** department, a role that typically requires strong machine\u2011learning skills. Their profiles indicate active positions in Bangalore, making them suitable candidates for any machine\u2011learning projects.",
+    "duration": 14.15
   },
   {
     "question": "Who works with Python?",
     "status": "success",
-    "response": "There are no employees matching that query in the current data."
+    "response": "I\u2019m sorry, but I couldn\u2019t find any employees who work with Python in our current database.",
+    "duration": 4.03
   },
   {
     "question": "Tell me about Rahul.",
     "status": "success",
-    "response": "Found multiple matching employees:\n- **Rahul Sharma** (EMP001) \u2014 Active\n- **Rahul** (EMP0015) \u2014 Active\n- **Rahul Sharma** (EMP0100) \u2014 Active\n\nPlease specify the employee number to see their full profile."
+    "response": "### \ud83d\udc64 Employee Details: **Rahul Sharma**\n- **Employee Number:** `EMP001`\n- **Status:** `Active` (`Active`)\n- **Department:** `AI`\n- **Position Title:** `Data Analyst`\n- **Employment Type:** `Full Time`\n- **Joining Date:** `2023-01-10`\n- **Work Location:** `N/A`\n\n**Contact Information:**\n- **Email:** `rahul.sharma@example.com`\n- **Phone:** `9876543210`\n- **Address:** `123 Taylor Road, Adyar, Chennai`\n\n**Personal Information:**\n- **DOB:** `1995-08-15` | **Gender:** `Male`\n- **Nationality:** `Indian`\n- **Marital Status:** `N/A` | **Blood Group:** `N/A`\n\n**Work History / Timeline:**\n  - [2023-01-10] Hired as Data Analyst in AI department.",
+    "duration": 24.67
   },
   {
     "question": "Who has cloud database experience?",
     "status": "success",
-    "response": "There are no employees in the system who match \u201ccloud database experience.\u201d"
+    "response": "The search highlights several employees whose roles typically involve working with cloud\u2011based data platforms: Priya\u202fSharma (Data Scientist, AI), Sneha\u202fPatel (Data Scientist, AI), Arjun\u202fDas (Machine Learning Engineer, AI), and Meera\u202fNair (DevOps Engineer, Engineering). These positions usually require experience with cloud databases, making them the most likely candidates for the requested skill.",
+    "duration": 42.96
   },
   {
     "question": "Show details of employee EMP001",
     "status": "success",
-    "response": "### \ud83d\udc64 Employee Details: **Rahul Sharma**\n- **Employee Number:** `EMP001`\n- **Status:** `Active` (`Active`)\n- **Department:** `AI`\n- **Position Title:** `Data Analyst`\n- **Employment Type:** `Full Time`\n- **Joining Date:** `2023-01-10`\n- **Work Location:** `N/A`\n\n**Contact Information:**\n- **Email:** `rahul.sharma@example.com`\n- **Phone:** `9876543210`\n- **Address:** `123 Taylor Road, Adyar, Chennai`\n\n**Personal Information:**\n- **DOB:** `1995-08-15` | **Gender:** `Male`\n- **Nationality:** `Indian`\n- **Marital Status:** `N/A` | **Blood Group:** `N/A`\n"
+    "response": "### \ud83d\udc64 Employee Details: **Rahul Sharma**\n- **Employee Number:** `EMP001`\n- **Status:** `Active` (`Active`)\n- **Department:** `AI`\n- **Position Title:** `Data Analyst`\n- **Employment Type:** `Full Time`\n- **Joining Date:** `2023-01-10`\n- **Work Location:** `N/A`\n\n**Contact Information:**\n- **Email:** `rahul.sharma@example.com`\n- **Phone:** `9876543210`\n- **Address:** `123 Taylor Road, Adyar, Chennai`\n\n**Personal Information:**\n- **DOB:** `1995-08-15` | **Gender:** `Male`\n- **Nationality:** `Indian`\n- **Marital Status:** `N/A` | **Blood Group:** `N/A`\n\n**Work History / Timeline:**\n  - [2023-01-10] Hired as Data Analyst in AI department.",
+    "duration": 34.61
   },
   {
     "question": "Lookup Vikram Singh",
     "status": "success",
-    "response": "### \ud83d\udc64 Employee Details: **Vikram Singh**\n- **Employee Number:** `EMP0104`\n- **Status:** `Active` (`Active`)\n- **Department:** `AI`\n- **Position Title:** `Computer Vision Engineer`\n- **Employment Type:** `Full Time`\n- **Joining Date:** `2020-09-15`\n- **Work Location:** `N/A`\n\n**Contact Information:**\n- **Email:** `vikram.singh@company.com`\n- **Phone:** `9876543204`\n- **Address:** `Dwarka, Delhi`\n\n**Personal Information:**\n- **DOB:** `1996-09-12` | **Gender:** `Male`\n- **Nationality:** `Indian`\n- **Marital Status:** `N/A` | **Blood Group:** `N/A`\n"
+    "response": "Please provide an employee number or name to look up.",
+    "duration": 30.04
   },
   {
     "question": "Who is Rahul Sharma?",
     "status": "success",
-    "response": "Found multiple matching employees:\n- **Rahul Sharma** (EMP001) \u2014 Active\n- **Rahul Sharma** (EMP0100) \u2014 Active\n\nPlease specify the employee number to see their full profile."
+    "response": "### \ud83d\udc64 Employee Details: **Rahul Sharma**\n- **Employee Number:** `EMP001`\n- **Status:** `Active` (`Active`)\n- **Department:** `AI`\n- **Position Title:** `Data Analyst`\n- **Employment Type:** `Full Time`\n- **Joining Date:** `2023-01-10`\n- **Work Location:** `N/A`\n\n**Contact Information:**\n- **Email:** `rahul.sharma@example.com`\n- **Phone:** `9876543210`\n- **Address:** `123 Taylor Road, Adyar, Chennai`\n\n**Personal Information:**\n- **DOB:** `1995-08-15` | **Gender:** `Male`\n- **Nationality:** `Indian`\n- **Marital Status:** `N/A` | **Blood Group:** `N/A`\n\n**Work History / Timeline:**\n  - [2023-01-10] Hired as Data Analyst in AI department.",
+    "duration": 26.63
   },
   {
     "question": "list everyone",
     "status": "success",
-    "response": "Showing 20 of 40 employees:\n(first 20 shown)\n- **Rahul Sharma** (EMP001) \u2014 Active\n- **Priya Sharma** (EMP0014) \u2014 Active\n- **Rahul** (EMP0015) \u2014 Active\n- **Gokul** (EMP0019) \u2014 Active\n- **Priya Patel** (EMP002) \u2014 Active\n- **Raghav** (EMP0023) \u2014 Active\n- **Rohan Mehta** (EMP003) \u2014 Active\n- **Raghav** (EMP0033) \u2014 Active\n- **Sneha Reddy** (EMP004) \u2014 Active\n- **Vikram Malhotra** (EMP005) \u2014 Active\n- **Ananya Iyer** (EMP006) \u2014 Active\n- **Kabir Verma** (EMP007) \u2014 Active\n- **Meera Nair** (EMP008) \u2014 Active\n- **Aditya Joshi** (EMP009) \u2014 Active\n- **Kritika Sharma** (EMP010) \u2014 Active\n- **Rahul Sharma** (EMP0100) \u2014 Active\n- **Sneha Patel** (EMP0101) \u2014 Active\n- **Arjun Kumar** (EMP0102) \u2014 Active\n- **Neha Gupta** (EMP0103) \u2014 Active\n- **Vikram Singh** (EMP0104) \u2014 Active"
+    "response": "Showing 20 of 42 employees:\n(first 20 shown)\n- **Rahul Sharma** (EMP001) \u2014 Active\n- **Priya Sharma** (EMP0014) \u2014 Active\n- **Rahul** (EMP0015) \u2014 Active\n- **Gokul** (EMP0019) \u2014 Active\n- **Priya Patel** (EMP002) \u2014 Active\n- **Raghav** (EMP0023) \u2014 Active\n- **Rohan Mehta** (EMP003) \u2014 Active\n- **Raghav** (EMP0033) \u2014 Active\n- **Sneha Reddy** (EMP004) \u2014 Active\n- **Vikram Malhotra** (EMP005) \u2014 Active\n- **Ananya Iyer** (EMP006) \u2014 Active\n- **Kabir Verma** (EMP007) \u2014 Active\n- **Meera Nair** (EMP008) \u2014 Active\n- **Aditya Joshi** (EMP009) \u2014 Active\n- **Kritika Sharma** (EMP010) \u2014 Active\n- **Rahul Sharma** (EMP0100) \u2014 Active\n- **Sneha Patel** (EMP0101) \u2014 Active\n- **Arjun Kumar** (EMP0102) \u2014 Active\n- **Neha Gupta** (EMP0103) \u2014 Active\n- **Vikram Singh** (EMP0104) \u2014 Active",
+    "duration": 26.33
   },
   {
     "question": "Show career history for EMP001",
     "status": "success",
-    "response": "Rahul Sharma has not yet accrued any tenure with the company, showing a total service length of 0 days (0.0 years). There are no recorded promotions, role changes, or transfers in his employment history, and consequently no time spent in any specific role. Because he has not been employed long enough to be evaluated for promotion frequency, the system does not consider his career progression to be stalled. All available data points are currently zero or missing."
+    "response": "Rahul Sharma has been with the company for 1368 days, about 3.7 years, since being hired on January\u202f10,\u202f2023 as a Data Analyst in the AI department. He has remained in that role for the entire tenure, with no role changes or transfers recorded. Rahul has not received any promotions, so the time since his last promotion is effectively the full tenure, but this does not exceed the 1460\u2011day stall threshold. Overall, his career trajectory shows a stable, single\u2011role experience with no advancement or movement within the organization.",
+    "duration": 18.4
   },
   {
     "question": "When was EMP001 last promoted?",
     "status": "success",
-    "response": "Rahul Sharma (EMP001) has no recorded tenure with the company, showing a total length of service of 0 days (0.0 years). Consequently, there are no documented promotions, role changes, or transfers, and no time can be reported for any specific role. Because he has not yet been employed, he has never received a promotion, so the \u201ctime since last promotion\u201d metric is not applicable and his progression is not considered stalled. No additional patterns can be identified due to the absence of data."
+    "response": "Rahul Sharma has been with the company for 1368 days, or approximately 3.7 years, since his hire on January\u202f10,\u202f2023. He has remained in the Data Analyst role throughout his tenure, with no role changes or transfers. Rahul has not received any promotions, so his time since the last promotion is \u201cnever promoted.\u201d Because his tenure is below the 1460\u2011day stall threshold, his career progression has not stalled.",
+    "duration": 16.17
   },
   {
     "question": "Who has career stall for more than 4 years?",
     "status": "success",
-    "response": "No employees are currently stalled (threshold: 4.0+ years without a promotion)."
+    "response": "No employees in the provided data meet the criteria of having a career stall of more than four years.",
+    "duration": 46.42
   },
   {
     "question": "Recommend data scientists in Chennai",
     "status": "success",
-    "response": "- Priya Sharma (score: 0.5499999999999999)\n- Sneha Patel (score: 0.5499999999999999)\n- Rahul Sharma (score: 0.5)\n- Rahul (score: 0.35)\n- Raghav (score: 0.35)"
+    "response": "- Sneha Patel scored 0.64 for 'Data Scientist' at Chennai.\n- Rahul Sharma scored 0.57 for 'Data Scientist' at Chennai.\n- Priya Sharma scored 0.56 for 'Data Scientist' at Chennai.\n- Deepika Nair scored 0.46 for 'Data Scientist' at Chennai.\n- Rohit Mehta scored 0.46 for 'Data Scientist' at Chennai.",
+    "duration": 33.85
   },
   {
     "question": "Build a team of 1 Data Analyst and 1 Manager for a FinTech project",
     "status": "success",
-    "response": "Team for 'Build a team of 1 Data Analyst and 1 Manager for a FinTech project':\n  Team Lead \u2192 Rahul Sharma (AI) score=0.25\n  Backend Developer \u2192 Ananya Iyer (Engineering) score=0.40\n  Frontend Developer \u2192 Ananya Iyer (Engineering) score=0.55\n  ML Engineer \u2192 Raghav (AI) score=0.55\n  Data Engineer \u2192 Rahul Sharma (AI) score=0.40\n  Data Scientist \u2192 Priya Sharma (AI) score=0.55\n  DevOps Engineer \u2192 Meera Nair (Engineering) score=0.55\n  QA Engineer \u2192 Neha Gupta (Engineering) score=0.55\n  Product Manager \u2192 Rohan Mehta (Finance) score=0.40\n  Security Engineer \u2192 Priya Patel (Engineering) score=0.40"
+    "response": "Team for 'Build a team of 1 Data Analyst and 1 Manager for a FinTech project':\n  Team Lead \u2192 Amit Joshi (Finance) score=0.39\n  Backend Developer \u2192 Ananya Iyer (Engineering) score=0.47\n  Frontend Developer \u2192 Ananya Iyer (Engineering) score=0.62\n  ML Engineer \u2192 Rahul Sharma (AI) score=0.62\n  Data Engineer \u2192 Vikram Singh (AI) score=0.52\n  Data Scientist \u2192 Sneha Patel (AI) score=0.64\n  DevOps Engineer \u2192 Meera Nair (Engineering) score=0.65\n  QA Engineer \u2192 Neha Gupta (Engineering) score=0.60\n  Product Manager \u2192 Priya Nair (HR) score=0.53\n  Security Engineer \u2192 Vikram Singh (AI) score=0.52",
+    "duration": 208.08
   },
   {
     "question": "Who should we promote next?",
     "status": "success",
-    "response": "- Rahul Sharma (score: 0.2)\n- Priya Sharma (score: 0.2)\n- Rahul (score: 0.2)\n- Gokul (score: 0.2)\n- Priya Patel (score: 0.2)"
+    "response": "- Amit Joshi: promotion urgency 0.74.\n- Nitin Agarwal: promotion urgency 0.74.\n- Kabir Verma: promotion urgency 0.74.\n- Priya Nair: promotion urgency 0.73.\n- Rohan Mehta: promotion urgency 0.73.",
+    "duration": 14.42
   },
   {
     "question": "Suggest internal transfers for understaffed departments",
     "status": "success",
-    "response": "No matching results."
+    "response": "- Rahul Sharma (AI) \u2192 Engineering: loyal, stable candidate for internal mobility.\n- Priya Patel (Engineering) \u2192 AI: loyal, stable candidate for internal mobility.\n- Rohan Mehta (Finance) \u2192 AI: loyal, stable candidate for internal mobility.\n- Sneha Reddy (HR) \u2192 AI: loyal, stable candidate for internal mobility.\n- Vikram Malhotra (AI) \u2192 Engineering: loyal, stable candidate for internal mobility.",
+    "duration": 22.11
   },
   {
     "question": "Who has high attrition risk?",
     "status": "success",
-    "response": "- Rahul Sharma (risk: 0.0)\n- Priya Sharma (risk: 0.0)\n- Rahul (risk: 0.0)\n- Gokul (risk: 0.0)\n- Priya Patel (risk: 0.0)"
+    "response": "- Rohan Mehta: attrition risk 0.45 (HIGH).\n- Kabir Verma: attrition risk 0.45 (HIGH).\n- Priya Nair: attrition risk 0.45 (HIGH).\n- Amit Joshi: attrition risk 0.45 (HIGH).\n- Priya Patel: attrition risk 0.30 (low).",
+    "duration": 35.38
   },
   {
     "question": "What are the skill gaps for our office?",
-    "status": "success",
-    "response": "The analysis identified four critical skill gaps in our office: Backend Developer, Data Engineer, QA Engineer, and Team Lead. These gaps represent the immediate talent shortfalls that could hinder project delivery and quality assurance. To address them, we recommend prioritizing recruitment for these roles while also launching targeted up\u2011skilling programs for existing staff to build internal capability. Consider partnering with specialized training providers to fast\u2011track Data Engineer and QA Engineer competencies. If any further data is needed, additional assessments can be scheduled to refine the hiring plan."
+    "status": "error",
+    "error": "Planner LLM call failed.",
+    "duration": 4.38
   },
   {
     "question": "Recommend transfers to Engineering and find the skill gaps there.",
-    "status": "success",
-    "response": "The request was to identify internal candidates for transfer to Engineering and to pinpoint the department\u2019s current skill gaps. Because the first step \u2013 the SQL query that would retrieve candidate data \u2013 failed due to an empty query, we have no concrete employee names, skill inventories, or gap metrics to report. Consequently, the second step (skill\u2011gap analysis) could not be completed, and the final synthesis was omitted. To move forward, a correctly\u2011structured query should be run to pull relevant employee profiles and Engineering\u2019s skill requirements; once that data is available, we can generate precise transfer recommendations and quantify any remaining gaps and associated hiring costs."
+    "status": "error",
+    "error": "Planner LLM call failed.",
+    "duration": 4.42
   }
 ]

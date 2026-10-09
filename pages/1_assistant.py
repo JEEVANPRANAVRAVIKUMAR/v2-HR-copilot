@@ -13,7 +13,10 @@ from __future__ import annotations
 
 import logging
 import streamlit as st
-from ui_helpers import load_css, render_sidebar, render_chat_message, empty_state
+from ui_helpers import (
+    load_css, render_sidebar, render_chat_message, empty_state,
+)
+from ai_initializer import initialize_ai_session
 
 st.set_page_config(
     page_title="💬 Assistant",
@@ -46,110 +49,7 @@ if "chat_initialized" not in st.session_state:
 
 def init_ai() -> bool:
     """Lazy-initialize AI components. Returns True on success."""
-    if st.session_state.chat_initialized:
-        return True
-    try:
-        from config import get_settings
-        from ai import (
-            GroqLLM, ConversationMemory, AIRouter, Planner, is_complex,
-            SqlAgent, CrudAgent, SemanticSearchAgent, AnalyticsAgent,
-            EmbeddingGenerator, HistoryAgent,
-        )
-        from database.queries import (
-            EmployeeRepository, SqlQueryRepository,
-            EmbeddingRepository, AnalyticsRepository,
-            EmployeeHistoryRepository,
-        )
-        from database.client import DatabaseClient
-        from services import EmployeeService, EmployeeHistoryService
-        from services.workforce_agents import (
-            RecommendationEngine, TeamBuilder, PromotionAnalyzer,
-            TransferAnalyzer, AttritionRisk, SkillGapAgent, InsightAgent,
-        )
-        from utils.logger import get_logger
-
-        settings = get_settings()
-        logger = get_logger("assistant")
-
-        # Force client initialization so repositories can be built.
-        DatabaseClient.get_client()
-
-        llm = GroqLLM(
-            api_key=settings.groq_api_key,
-            model=settings.groq_model,
-            logger=logger,
-        )
-
-        # Repositories
-        emp_repo = EmployeeRepository()
-        history_repo = EmployeeHistoryRepository()
-        sql_repo = SqlQueryRepository()
-        embed_repo = EmbeddingRepository()
-        analytics_repo = AnalyticsRepository()
-
-        # Services
-        history_service = EmployeeHistoryService(history_repo, logger)
-        employee_service = EmployeeService(
-            repository=emp_repo, logger=logger, history_service=history_service,
-        )
-
-        # Embedder for semantic search.
-        embedder = EmbeddingGenerator(
-            model_name=settings.embedding_model, logger=logger,
-        )
-
-        # Core agents.
-        st.session_state.llm = llm
-        st.session_state.memory = ConversationMemory()
-        st.session_state.router = AIRouter(llm, logger)
-        st.session_state.sql_agent = SqlAgent(llm, sql_repo, logger)
-        st.session_state.crud_agent = CrudAgent(llm, employee_service, logger)
-        st.session_state.semantic_agent = SemanticSearchAgent(
-            embedder, embed_repo, llm, logger,
-        )
-        st.session_state.analytics_agent = AnalyticsAgent(
-            analytics_repo, llm, logger,
-        )
-        st.session_state.history_agent = HistoryAgent(
-            llm, history_service, employee_service, logger,
-        )
-
-        # Workforce agents (Part 6).
-        st.session_state.recommendation_engine = RecommendationEngine(
-            employee_service, history_service, logger,
-        )
-        st.session_state.team_builder = TeamBuilder(
-            st.session_state.recommendation_engine, logger,
-        )
-        st.session_state.promotion_analyzer = PromotionAnalyzer(
-            history_service, employee_service, logger,
-        )
-        st.session_state.transfer_analyzer = TransferAnalyzer(
-            employee_service, history_service,
-            st.session_state.analytics_agent, logger,
-        )
-        st.session_state.attrition_risk = AttritionRisk(
-            history_service, employee_service,
-            st.session_state.analytics_agent, logger,
-        )
-        st.session_state.skill_gap_agent = SkillGapAgent(
-            employee_service, st.session_state.analytics_agent, logger,
-        )
-        st.session_state.insight_agent = InsightAgent(
-            st.session_state.analytics_agent, logger,
-        )
-
-        # Planner (Part 7).
-        st.session_state.planner = Planner(llm, logger)
-        st.session_state.is_complex = is_complex
-
-        st.session_state.chat_initialized = True
-        return True
-
-    except Exception:
-        logging.getLogger("assistant").exception("AI initialization failed")
-        st.warning("AI components are not available right now. Check the application logs.")
-        return False
+    return initialize_ai_session()
 
 
 def _agent_registry() -> dict:
@@ -512,11 +412,11 @@ if prompt := st.chat_input("Ask me anything about your workforce..."):
             try:
                 st.session_state.memory.add_turn("user", prompt)
                 response = dispatch_message(prompt)
-            except Exception:
+            except Exception as exc:
                 logging.getLogger("assistant").exception("Chat dispatch failed")
                 response = (
-                    "Sorry, I couldn't complete that request. "
-                    "Please rephrase it or try again."
+                    f"⚠️ **Error processing request:** {exc}\n\n"
+                    "Please verify your query or check configuration."
                 )
 
         st.session_state.messages.append(
@@ -524,12 +424,14 @@ if prompt := st.chat_input("Ask me anything about your workforce..."):
         )
         st.rerun()
     else:
+        err = st.session_state.get("init_error", "Unknown initialization error")
         st.session_state.messages.append(
             {
                 "role": "assistant",
                 "content": (
-                    "AI services are not available right now. "
-                    "Please check your configuration and try again."
+                    f"⚠️ **AI services are not available right now.**\n\n"
+                    f"*Reason:* `{err}`\n\n"
+                    "Please check your `.env` configuration (Groq API Key and Supabase credentials) and reload the page."
                 ),
             }
         )

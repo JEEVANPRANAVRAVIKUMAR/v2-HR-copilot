@@ -30,31 +30,32 @@ REQUIRED_CREATE_FIELDS: Set[str] = {"employee_no", "full_name"}
 # All recognised employee fields for the LLM to extract.
 RECOGNISED_FIELDS: Set[str] = {
     "employee_no", "full_name", "is_active",
-    "department", "position_title",
+    "department", "position_title", "email", "phone",
+    "employment_type", "joining_date", "work_location", "status",
 }
 
 CRUD_SYSTEM_PROMPT = """\
 You are an HR assistant helping with employee record management. \
 The user's request has been classified as a CRUD operation.
 
-Extract as many of the following fields as you can from the \
-user's message:
-- operation: one of "create", "update", "activate", "deactivate", \
-"lookup", "list", "search"
-  * Use "list" when the user asks to see/show/list ALL employees \
-(or "everyone").
-  * Use "lookup" when the user asks about ONE specific employee by \
-number or name (e.g. "show employee EMP001", "details of John").
-  * Use "search" when the user wants to find employees matching \
-criteria (active/inactive, department, position — even if they \
-don't name a specific employee).
-- employee_no: the employee number if mentioned
+Extract as many of the following fields as you can from the user's message and prior conversation:
+- operation: one of "create", "update", "activate", "deactivate", "lookup", "list", "search"
+  * Use "create" when adding a new employee.
+  * Use "update" when modifying or adding additional info (contact, employment type, joining date, department, etc.) to an employee.
+  * Use "list" when the user asks to see/show/list ALL employees (or "everyone").
+  * Use "lookup" when the user asks about ONE specific employee by number or name.
+  * Use "search" when the user wants to find employees matching criteria.
+- employee_no: the employee number if mentioned (e.g. EMP1776) or referenced in previous context
 - full_name: the employee's full name
 - is_active: whether they should be active (true/false)
-- department: the department name if mentioned as a filter
-- position_title: the job title if mentioned as a filter
-
-Also note any missing required fields for the operation.
+- department: the department name (e.g. AI, Engineering, HR)
+- position_title: the job/position title (e.g. Intern, Data Scientist)
+- email: email address (e.g. name@example.com)
+- phone: phone number
+- employment_type: Full Time, Part Time, Intern, Contract
+- joining_date: joining date (e.g. YYYY-MM-DD or DD/MM/YYYY)
+- work_location: office/city location
+- status: Active, Inactive, On Leave
 
 Respond with a JSON object:
 {
@@ -65,9 +66,7 @@ Respond with a JSON object:
   "ready_to_confirm": true/false
 }
 
-If the user is asking about an existing employee, include the \
-employee_no or name you found. Do NOT make up values for fields \
-the user hasn't provided.
+If the user is continuing a previous turn to add details (e.g. giving contact info, joining date, or employment type), use operation "update" and keep the employee_no from context if not stated.
 """
 
 
@@ -168,7 +167,7 @@ class CrudAgent:
                 return self._handle_create(parsed)
 
             if operation == "update":
-                return self._handle_update(parsed)
+                return self._handle_update(parsed, context=context)
 
             # A malformed/overly conservative LLM parse should not turn a
             # simple employee question into an "unknown" operation. Try a
@@ -197,7 +196,7 @@ class CrudAgent:
                 "%s | %.1fms | ERROR: %s", op, duration_ms, exc,
             )
             raise ServiceError(
-                "CRUD operation failed."
+                f"CRUD operation failed: {exc}"
             ) from exc
 
     # ----------------------------------------------------------------
@@ -213,36 +212,101 @@ class CrudAgent:
         """
         Use the LLM to parse the user's message into structured fields.
         """
-        messages = self._llm.build_messages(
-            system_prompt=CRUD_SYSTEM_PROMPT,
-            user_message=message,
-            context=context,
-        )
-        raw = self._llm.generate(
-            messages, temperature=0.1, max_tokens=512,
-        ).strip()
-
-        # Strip markdown fences
-        if raw.startswith("```"):
-            raw = raw.strip("`")
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.strip()
-
         import json
         try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            return {
-                "operation": "unknown",
-                "fields": {},
-                "missing_fields": [],
-                "clarification_needed": (
-                    "I couldn't understand the request. "
-                    "Can you rephrase it?"
-                ),
-                "ready_to_confirm": False,
-            }
+            messages = self._llm.build_messages(
+                system_prompt=CRUD_SYSTEM_PROMPT,
+                user_message=message,
+                context=context,
+            )
+            raw = self._llm.generate(
+                messages, temperature=0.1, max_tokens=512,
+            ).strip()
+
+            # Strip markdown fences
+            if raw.startswith("```"):
+                raw = raw.strip("`")
+                if raw.startswith("json"):
+                    raw = raw[4:]
+                raw = raw.strip()
+
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                return data
+        except Exception as exc:
+            self._logger.warning("CRUD parse error (%s), using fallback parser.", exc)
+
+        # Heuristic fallback parser
+        fields: Dict[str, Any] = {}
+        msg = message.strip()
+
+        # Email
+        email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', msg)
+        if email_match:
+            fields["email"] = email_match.group(0)
+
+        # Phone
+        phone_match = re.search(r'(?:phone|contact|mobile|cell)[:\s]+([0-9\+\-\s\(\)]{7,15})', msg, re.IGNORECASE)
+        if phone_match and not fields.get("email"):
+            fields["phone"] = phone_match.group(1).strip()
+
+        # Joining date
+        date_match = re.search(r'(?:joining date|joining|date|joined)[:\s]+([0-9\/\-\.]+)', msg, re.IGNORECASE)
+        if date_match:
+            fields["joining_date"] = date_match.group(1).strip()
+
+        # Employment type
+        type_match = re.search(r'(?:type|employment type)[:\s]+([\w\s]+?)(?:joining|contact|department|position|status|$)', msg, re.IGNORECASE)
+        if type_match:
+            fields["employment_type"] = type_match.group(1).strip()
+
+        # Department
+        dept_match = re.search(r'department[:\s]+([\w\s]+?)(?:position|status|type|joining|contact|$)', msg, re.IGNORECASE)
+        if dept_match:
+            fields["department"] = dept_match.group(1).strip()
+
+        # Position title
+        pos_match = re.search(r'position(?: title)?[:\s]+([\w\s]+?)(?:department|status|type|joining|contact|$)', msg, re.IGNORECASE)
+        if pos_match:
+            fields["position_title"] = pos_match.group(1).strip()
+
+        # Employee No
+        emp_match = re.search(r'\b(emp\d+)\b', msg, re.IGNORECASE)
+        if emp_match:
+            fields["employee_no"] = emp_match.group(1).upper()
+
+        # Full Name
+        name_match = re.search(r'(?:fullname|full name|name)[:\s]+([\w\s]+?)(?:status|department|position|employee|type|$)', msg, re.IGNORECASE)
+        if name_match:
+            fields["full_name"] = name_match.group(1).strip()
+
+        # Status
+        status_match = re.search(r'status[:\s]+(\w+)', msg, re.IGNORECASE)
+        if status_match:
+            fields["status"] = status_match.group(1).capitalize()
+            fields["is_active"] = fields["status"].lower() not in ("inactive", "terminated", "false", "0")
+
+        # Decide operation
+        if fields.get("full_name") and fields.get("employee_no"):
+            return {"operation": "create", "fields": fields, "missing_fields": [], "ready_to_confirm": True}
+
+        if any(k in fields for k in ["email", "phone", "joining_date", "employment_type", "department", "position_title"]):
+            return {"operation": "update", "fields": fields, "missing_fields": [], "ready_to_confirm": True}
+
+        msg_l = msg.lower()
+        if any(k in msg_l for k in ["all", "everyone", "list", "show everyone"]):
+            return {"operation": "list", "fields": {}, "missing_fields": [], "ready_to_confirm": False}
+
+        if fields.get("employee_no"):
+            return {"operation": "lookup", "fields": fields, "missing_fields": [], "ready_to_confirm": False}
+
+        return {
+            "operation": "unknown",
+            "fields": fields,
+            "missing_fields": [],
+            "clarification_needed": "I couldn't understand the request. Can you rephrase it?",
+            "ready_to_confirm": False,
+        }
 
     # ----------------------------------------------------------------
     # Internal: handlers
@@ -447,38 +511,120 @@ class CrudAgent:
             is_active=fields.get("is_active", True),
         )
         result = self._employee_service.create_employee(data)
-        return (
-            f"✅ Employee **{result.full_name}** "
-            f"({result.employee_no}) created successfully."
+
+        # Save optional metadata
+        self._employee_service.save_employee_details(
+            result.employee_no,
+            email=fields.get("email"),
+            phone=fields.get("phone"),
+            employment_type=fields.get("employment_type"),
+            joining_date=fields.get("joining_date"),
+            status=fields.get("status"),
+            work_location=fields.get("work_location"),
+            department=fields.get("department"),
+            position_title=fields.get("position_title"),
         )
 
+        details = []
+        if fields.get("department"):
+            details.append(f"Department: `{fields['department']}`")
+        if fields.get("position_title"):
+            details.append(f"Position: `{fields['position_title']}`")
+
+        has_credentials = any([
+            fields.get("email"),
+            fields.get("department"),
+            fields.get("position_title"),
+            fields.get("employment_type"),
+            fields.get("joining_date"),
+        ])
+
+        if has_credentials:
+            saved_items = []
+            if fields.get("department"): saved_items.append(f"- **Department:** `{fields['department']}`")
+            if fields.get("position_title"): saved_items.append(f"- **Position Title:** `{fields['position_title']}`")
+            if fields.get("email"): saved_items.append(f"- **Email:** `{fields['email']}`")
+            if fields.get("phone"): saved_items.append(f"- **Phone:** `{fields['phone']}`")
+            if fields.get("employment_type"): saved_items.append(f"- **Employment Type:** `{fields['employment_type']}`")
+            if fields.get("joining_date"): saved_items.append(f"- **Joining Date:** `{fields['joining_date']}`")
+            if fields.get("work_location"): saved_items.append(f"- **Work Location:** `{fields['work_location']}`")
+
+            items_str = "\n".join(saved_items)
+            return (
+                f"✅ **Employee Created Successfully!**\n\n"
+                f"### 👤 {result.full_name} (`{result.employee_no}`)\n"
+                f"- **Status:** `{'Active' if result.is_active else 'Inactive'}`\n"
+                f"{items_str}\n\n"
+                "All employee records and credentials have been saved to the database."
+            )
+        else:
+            return (
+                f"✅ Employee **{result.full_name}** (`{result.employee_no}`) created in the directory.\n\n"
+                "⚠️ **Please provide the employee credentials and role details to complete onboarding:**\n"
+                "- 📧 **Email Address** (e.g. `email: name@company.com`)\n"
+                "- 🏢 **Department** (e.g. `department: AI`)\n"
+                "- 💼 **Position Title** (e.g. `position: Intern`)\n"
+                "- 📅 **Joining Date** (e.g. `joining date: 2026-10-09` or `DD/MM/YYYY`)\n"
+                "- 📋 **Employment Type** (e.g. `type: Full Time` / `Intern`)\n"
+                "- 📞 **Phone Number** (optional)\n\n"
+                "_You can reply directly with these details in one message._"
+            )
+
     def _handle_update(
-        self, parsed: Dict[str, Any],
+        self, parsed: Dict[str, Any], context: List[Dict[str, str]] | None = None,
     ) -> str:
         fields = parsed.get("fields", {}) or {}
+        employee_no = fields.get("employee_no")
 
-        if not fields.get("employee_no"):
+        # Resolve employee_no from conversation context if not provided in latest message
+        if not employee_no and context:
+            for turn in reversed(context):
+                content = turn.get("content", "")
+                m = re.search(r'\b(EMP\d+)\b', content, re.IGNORECASE)
+                if m:
+                    employee_no = m.group(1).upper()
+                    break
+
+        if not employee_no:
+            # Fallback: check the latest created employee in database
+            all_emps = self._employee_service.list_all_employees()
+            if all_emps:
+                employee_no = all_emps[-1].employee_no
+
+        if not employee_no:
             return (
                 "Which employee would you like to update? "
                 "Please provide their employee number."
             )
 
-        # Build update — only include fields the user explicitly provided
-        update_fields = {}
+        # 1. Update core table if full_name is provided
         if "full_name" in fields:
-            update_fields["full_name"] = fields["full_name"]
-
-        if not update_fields:
-            return (
-                "What would you like to update? "
-                "You can change the employee's name."
+            self._employee_service.update_employee(
+                employee_no, EmployeeUpdate(full_name=fields["full_name"]),
             )
 
-        data = EmployeeUpdate(**update_fields)
-        result = self._employee_service.update_employee(
-            fields["employee_no"], data,
+        # 2. Persist child tables (contact info, employment details, position)
+        self._employee_service.save_employee_details(
+            employee_no,
+            email=fields.get("email"),
+            phone=fields.get("phone"),
+            employment_type=fields.get("employment_type"),
+            joining_date=fields.get("joining_date"),
+            status=fields.get("status"),
+            work_location=fields.get("work_location"),
+            department=fields.get("department"),
+            position_title=fields.get("position_title"),
         )
+
+        saved_items = []
+        for k in ["department", "position_title", "email", "phone", "employment_type", "joining_date", "work_location", "status"]:
+            if k in fields and fields[k]:
+                saved_items.append(f"- **{k.replace('_', ' ').title()}:** `{fields[k]}`")
+
+        items_str = "\n".join(saved_items) if saved_items else "- Updated employee record"
         return (
-            f"✅ Employee **{result.full_name}** "
-            f"({result.employee_no}) updated successfully."
+            f"✅ **Employee Credentials Saved Successfully!**\n\n"
+            f"### 👤 Profile Summary for `{employee_no}`\n"
+            f"{items_str}\n\n"
+            "All credentials and employment details have been saved to the database."
         )

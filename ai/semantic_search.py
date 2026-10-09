@@ -24,16 +24,13 @@ from .embeddings import EmbeddingGenerator
 from .llm import GroqLLM
 
 SEMANTIC_SYSTEM_PROMPT = """\
-You are an HR assistant. The user asked to find employees by \
-meaning. Below are the top matching employees from a semantic \
-search, ordered by relevance (highest match first).
+You are an HR assistant. The user asked to find employees by skills, role, or meaning.
+Below are the top matching employees from semantic search, ordered by relevance (highest match first):
 
 Results:
 {results}
 
-Write a concise natural-language answer. Mention the employee \
-names and what makes them relevant. If there are no results, \
-say so clearly. Use 1-4 sentences.
+Write a concise natural-language answer in 1-4 sentences. Mention the relevant employee names, their job titles, and departments, explaining how they match the user's query. If there are no results, state that clearly.
 """
 
 
@@ -55,6 +52,16 @@ use JSON or markdown headings.
 # Default weights used to build an :class:`Explanation`.
 _WEIGHT_SIMILARITY = 0.7
 _WEIGHT_TERM_OVERLAP = 0.3
+
+
+def _cosine_sim(v1: List[float], v2: List[float]) -> float:
+    """Compute cosine similarity between two vectors."""
+    dot = sum(a * b for a, b in zip(v1, v2))
+    norm1 = sum(a * a for a in v1) ** 0.5
+    norm2 = sum(b * b for b in v2) ** 0.5
+    if norm1 == 0.0 or norm2 == 0.0:
+        return 0.0
+    return dot / (norm1 * norm2)
 
 
 class SemanticSearchAgent:
@@ -81,6 +88,7 @@ class SemanticSearchAgent:
         self._embedding_repo = embedding_repo
         self._llm = llm
         self._logger = logger
+        self._doc_embeddings_cache: Dict[str, tuple[List[float], Dict[str, Any], str]] = {}
 
     def search(
         self,
@@ -90,7 +98,7 @@ class SemanticSearchAgent:
         threshold: float = 0.5,
     ) -> List[Dict[str, Any]]:
         """
-        Embed the query and return raw vector search results.
+        Embed the query and return vector search results.
 
         Args:
             query: Natural-language search query.
@@ -107,19 +115,19 @@ class SemanticSearchAgent:
         op = "semantic_search.search"
 
         try:
+            query_vector = self._embedder.embed_query(query)
             results = []
             try:
-                query_vector = self._embedder.embed_query(query)
                 results = self._embedding_repo.search(
                     query_vector,
                     match_threshold=threshold,
                     match_count=top_k,
                 )
             except Exception as e:
-                self._logger.warning("Vector database search failed, attempting keyword fallback: %s", e)
+                self._logger.warning("Vector database search failed, attempting in-memory vector fallback: %s", e)
 
             if not results:
-                # Fallback to local keyword/text matching across database profiles
+                # In-memory dense vector embedding search fallback across all employee profiles
                 try:
                     from database.queries import EmployeeRepository
                     emp_repo = EmployeeRepository()
@@ -133,46 +141,56 @@ class SemanticSearchAgent:
                         from database.queries.sql_query_repository import SqlQueryRepository
                         sql_repo = SqlQueryRepository()
                         all_flat = [sql_repo._flatten_employee_row(r) for r in response.data]
-                        
-                        import re
-                        query_clean = re.sub(r"[^\w\s]", " ", query.lower())
-                        words = [w for w in query_clean.split() if w not in (
-                            "who", "is", "in", "the", "department", "works", "with", "a", "an", "at", "for", "of", "all", "employee", "employees"
-                        )]
-                        
-                        matched = []
+
+                        scored_items = []
                         for flat_row in all_flat:
-                            score = 0
-                            full_text = " ".join([
-                                str(flat_row.get("full_name") or ""),
-                                str(flat_row.get("department_name") or ""),
-                                str(flat_row.get("position_title") or ""),
-                                str(flat_row.get("city") or ""),
-                                str(flat_row.get("employment_type") or ""),
-                                str(flat_row.get("status") or ""),
-                            ]).lower()
-                            
-                            # Support composite exact matches if words exist
-                            for word in words:
-                                if word in full_text:
-                                    score += 1
-                                    
-                            if score > 0:
-                                similarity = min(0.6 + (score * 0.1), 0.95)
-                                matched.append({
-                                    "employee_no": flat_row.get("employee_no"),
-                                    "similarity": similarity,
-                                    "full_name": flat_row.get("full_name"),
-                                    "department": flat_row.get("department_name"),
-                                    "position_title": flat_row.get("position_title"),
-                                    "metadata": flat_row,
-                                    "content": f"Employee {flat_row.get('full_name')} working as {flat_row.get('position_title')} in {flat_row.get('department_name')} department.",
-                                })
-                        
-                        matched.sort(key=lambda x: x["similarity"], reverse=True)
+                            emp_no = flat_row.get("employee_no", "")
+                            full_name = flat_row.get("full_name", "")
+                            dept = flat_row.get("department_name") or flat_row.get("department") or ""
+                            pos = flat_row.get("position_title", "")
+                            city = flat_row.get("city", "")
+
+                            content_str = (
+                                f"Employee {full_name} ({emp_no}), {pos} in {dept} department. "
+                                f"Work location: {city}. "
+                                f"Full profile: {pos}, {dept}, {full_name}."
+                            )
+
+                            # Check in-memory embedding cache
+                            if emp_no in self._doc_embeddings_cache:
+                                emp_vector, cached_flat, cached_content = self._doc_embeddings_cache[emp_no]
+                            else:
+                                emp_vector = self._embedder.embed(content_str)
+                                self._doc_embeddings_cache[emp_no] = (emp_vector, flat_row, content_str)
+
+                            sim = _cosine_sim(query_vector, emp_vector)
+
+                            # Also award lexical boost if query keywords match title/dept directly
+                            query_clean = query.lower()
+                            if pos and pos.lower() in query_clean:
+                                sim = max(sim, 0.78)
+                            if dept and dept.lower() in query_clean and len(dept) > 2:
+                                sim = max(sim, 0.72)
+
+                            scored_items.append({
+                                "employee_no": emp_no,
+                                "similarity": round(sim, 4),
+                                "full_name": full_name,
+                                "department": dept,
+                                "position_title": pos,
+                                "metadata": flat_row,
+                                "content": content_str,
+                            })
+
+                        scored_items.sort(key=lambda x: x["similarity"], reverse=True)
+                        # Filter by dynamic threshold
+                        matched = [it for it in scored_items if it["similarity"] >= max(threshold, 0.35)]
+                        if not matched and scored_items and scored_items[0]["similarity"] > 0.25:
+                            matched = scored_items[:top_k]
                         results = matched[:top_k]
                 except Exception as ex:
-                    self._logger.warning("Local semantic search fallback failed: %s", ex)
+                    self._logger.warning("In-memory vector semantic search failed: %s", ex)
+
 
             duration_ms = (time.perf_counter() - start) * 1000
             self._logger.info(
@@ -357,17 +375,28 @@ class SemanticSearchAgent:
             }
             for r in scored
         ]
-        prompt = SEMANTIC_SYSTEM_PROMPT.format(
-            results=json.dumps(lite, indent=2, default=str),
-        )
-        answer = self._llm.generate(
-            [
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": query},
-            ],
-            temperature=0.2,
-            max_tokens=512,
-        ).strip()
+        try:
+            prompt = SEMANTIC_SYSTEM_PROMPT.format(
+                results=json.dumps(lite, indent=2, default=str),
+            )
+            answer = self._llm.generate(
+                [
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": query},
+                ],
+                temperature=0.2,
+                max_tokens=512,
+            ).strip()
+        except Exception as exc:
+            self._logger.warning("Semantic search LLM synthesis failed (%s), formatting matches directly.", exc)
+            if not scored:
+                answer = f"No matching candidates found for '{query}'."
+            else:
+                lines = [
+                    f"• **{r.get('name') or r.get('full_name')}** (`{r.get('employee_no')}`) — {r.get('position_title', 'N/A')} ({r.get('department', 'N/A')})"
+                    for r in scored[:5]
+                ]
+                answer = f"Found {len(scored)} candidate(s) relevant to '{query}':\n\n" + "\n".join(lines)
         return {"answer": answer, "results": scored}
 
     def explain(

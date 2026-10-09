@@ -29,11 +29,11 @@ class GroqLLM:
     def __init__(
         self,
         api_key: str,
-        model: str = "llama-3.3-70b-versatile",
+        model: str = "openai/gpt-oss-120b",
         logger: Logger | None = None,
     ) -> None:
         self._client = Groq(api_key=api_key)
-        self._model = model
+        self._model = model or "openai/gpt-oss-120b"
         self._logger = logger or logging.getLogger(__name__)
 
     # ----------------------------------------------------------------
@@ -46,7 +46,7 @@ class GroqLLM:
         *,
         temperature: float = 0.1,
         max_tokens: int = 1024,
-        retry_count: int = 2,
+        retry_count: int = 3,
     ) -> str:
         """
         Send messages to the LLM and return the text response.
@@ -64,11 +64,13 @@ class GroqLLM:
             LlmError: If all retries are exhausted.
         """
         last_exception: Exception | None = None
+        models_to_try = [self._model, "openai/gpt-oss-20b", "qwen/qwen3.6-27b"]
 
         for attempt in range(1 + retry_count):
+            current_model = models_to_try[attempt % len(models_to_try)]
             try:
                 response = self._client.chat.completions.create(
-                    model=self._model,
+                    model=current_model,
                     messages=messages,
                     temperature=temperature,
                     max_tokens=max_tokens,
@@ -80,23 +82,27 @@ class GroqLLM:
 
                 self._logger.debug(
                     "LLM call succeeded (model=%s, tokens=%s).",
-                    self._model,
+                    current_model,
                     getattr(response.usage, "total_tokens", "?"),
                 )
                 return content
 
             except Exception as exc:
                 last_exception = exc
+                err_str = str(exc).lower()
                 self._logger.warning(
-                    "LLM call attempt %d failed: %s",
+                    "LLM call attempt %d failed (model=%s): %s",
                     attempt + 1,
+                    current_model,
                     exc,
                 )
                 if attempt < retry_count:
-                    time.sleep(2 ** attempt)
+                    # Longer exponential backoff if 429 rate limit or capacity issue
+                    backoff = 3.0 * (attempt + 1) if ("429" in err_str or "rate" in err_str or "capacity" in err_str) else 1.0
+                    time.sleep(backoff)
 
         raise LlmError(
-            f"LLM call failed after {retry_count + 1} attempts."
+            f"LLM call failed: {last_exception}"
         ) from last_exception
 
     # ----------------------------------------------------------------

@@ -8,6 +8,7 @@ import streamlit as st
 import time
 import json
 from ui_helpers import load_css, render_sidebar, info_card
+from ai_initializer import initialize_ai_session
 
 st.set_page_config(
     page_title="🔍 Diagnostics",
@@ -31,14 +32,11 @@ st.markdown(
 
 # ---- Lazy Initialize AI ----
 def init_ai_components() -> bool:
-    if "chat_initialized" in st.session_state and st.session_state.chat_initialized:
-        return True
-    try:
-        from pages.1_assistant import init_ai
-        return init_ai()
-    except Exception as e:
-        st.error(f"Failed to initialize AI components: {e}")
-        return False
+    success = initialize_ai_session()
+    if not success:
+        err = st.session_state.get("init_error", "Unknown initialization error")
+        st.error(f"Failed to initialize AI components: {err}")
+    return success
 
 # ---- Questions List ----
 DIAGNOSTIC_QUESTIONS = [
@@ -84,71 +82,53 @@ def run_diagnostics():
         st.session_state.diagnostics_running = False
         return
 
-    # Extract role and location helper logic
-    def _extract_role(msg):
-        msg = msg.lower()
-        if "data scientist" in msg: return "Data Scientist"
-        if "data analyst" in msg: return "Data Analyst"
-        if "manager" in msg: return "Manager"
-        return None
-
-    def _extract_location(msg):
-        msg = msg.lower()
-        if "chennai" in msg: return "Chennai"
-        if "bangalore" in msg: return "Bangalore"
-        if "hyderabad" in msg: return "Hyderabad"
-        return None
-
-    def _format_scored_list(results, label="score"):
-        if not results: return "No matching results."
-        return "\n".join([f"- **{r.get('full_name', '?')}** ({label}: {r.get('score', 0)})" for r in results[:5]])
-
-    def _format_skill_gap(result):
-        data = result if isinstance(result, dict) else {}
-        return f"Skill gap: {data.get('required_roles', [])} needed."
-
     # Dispatch logic
     def execute_query(user_message):
-        context = []
-        from ai.planner import is_complex
-        
-        if is_complex(user_message):
-            agent_registry = {
-                "SQL": lambda msg, ctx, prev: st.session_state.sql_agent.answer(msg, context=ctx),
-                "Analytics": lambda msg, ctx, prev: st.session_state.analytics_agent.answer_question(msg),
-                "CRUD": lambda msg, ctx, prev: st.session_state.crud_agent.process(msg, context=ctx),
-                "SemanticSearch": lambda msg, ctx, prev: st.session_state.semantic_agent.answer(msg),
-                "History": lambda msg, ctx, prev: st.session_state.history_agent.answer(msg),
-                "Recommendation": lambda msg, ctx, prev: _format_scored_list(st.session_state.recommendation_engine.recommend(role=_extract_role(msg), location=_extract_location(msg))),
-                "TeamBuild": lambda msg, ctx, prev: st.session_state.team_builder.build(msg).get("summary", "No team summary"),
-                "Promotion": lambda msg, ctx, prev: _format_scored_list(st.session_state.promotion_analyzer.analyze()),
-                "Transfer": lambda msg, ctx, prev: _format_scored_list(st.session_state.transfer_analyzer.analyze()),
-                "Attrition": lambda msg, ctx, prev: _format_scored_list(st.session_state.attrition_risk.analyze(), label="risk"),
-                "SkillGap": lambda msg, ctx, prev: _format_skill_gap(st.session_state.skill_gap_agent.analyze(msg)),
-                "Insights": lambda msg, ctx, prev: json.dumps(st.session_state.insight_agent.full_scorecard(), default=str),
+        try:
+            import importlib
+            assistant_mod = importlib.import_module("pages.1_assistant")
+            return assistant_mod.dispatch_message(user_message)
+        except Exception:
+            # Fallback to local session state execution
+            context = st.session_state.memory.get_context() if "memory" in st.session_state else []
+            from ai.planner import is_complex
+            
+            if is_complex(user_message):
+                agent_registry = {
+                    "SQL": lambda msg, ctx, prev: st.session_state.sql_agent.answer(msg, context=ctx),
+                    "Analytics": lambda msg, ctx, prev: st.session_state.analytics_agent.answer_question(msg),
+                    "CRUD": lambda msg, ctx, prev: st.session_state.crud_agent.process(msg, context=ctx),
+                    "SemanticSearch": lambda msg, ctx, prev: st.session_state.semantic_agent.answer(msg),
+                    "History": lambda msg, ctx, prev: st.session_state.history_agent.answer(msg),
+                    "Recommendation": lambda msg, ctx, prev: str(st.session_state.recommendation_engine.recommend()),
+                    "TeamBuild": lambda msg, ctx, prev: st.session_state.team_builder.build(msg).get("summary", "No team summary"),
+                    "Promotion": lambda msg, ctx, prev: str(st.session_state.promotion_analyzer.analyze()),
+                    "Transfer": lambda msg, ctx, prev: str(st.session_state.transfer_analyzer.analyze()),
+                    "Attrition": lambda msg, ctx, prev: str(st.session_state.attrition_risk.analyze()),
+                    "SkillGap": lambda msg, ctx, prev: str(st.session_state.skill_gap_agent.analyze(msg)),
+                    "Insights": lambda msg, ctx, prev: json.dumps(st.session_state.insight_agent.full_scorecard(), default=str),
+                }
+                res = st.session_state.planner.execute(user_message, agent_registry=agent_registry, context=context)
+                return res.get("answer") or "Planner failed"
+
+            decision = st.session_state.router.classify(user_message, context=context)
+            intent = decision.intent.value
+
+            tier1_map = {
+                "SQL": lambda: st.session_state.sql_agent.answer(user_message, context=context),
+                "CRUD": lambda: st.session_state.crud_agent.process(user_message, context=context),
+                "SemanticSearch": lambda: st.session_state.semantic_agent.answer(user_message),
+                "Analytics": lambda: st.session_state.analytics_agent.answer_question(user_message),
+                "History": lambda: st.session_state.history_agent.answer(user_message),
+                "Recommendation": lambda: str(st.session_state.recommendation_engine.recommend()),
+                "TeamBuild": lambda: st.session_state.team_builder.build(user_message).get("summary", "No team summary"),
+                "Promotion": lambda: str(st.session_state.promotion_analyzer.analyze()),
+                "Transfer": lambda: str(st.session_state.transfer_analyzer.analyze()),
+                "Attrition": lambda: str(st.session_state.attrition_risk.analyze()),
+                "SkillGap": lambda: str(st.session_state.skill_gap_agent.analyze(user_message)),
+                "Insights": lambda: json.dumps(st.session_state.insight_agent.full_scorecard(), default=str),
             }
-            res = st.session_state.planner.execute(user_message, agent_registry=agent_registry, context=context)
-            return res.get("answer") or "Planner failed"
-
-        # Tier 1 classification
-        decision = st.session_state.router.classify(user_message, context=context)
-        intent = decision.intent.value
-
-        tier1_map = {
-            "SQL": lambda: st.session_state.sql_agent.answer(user_message, context=context),
-            "CRUD": lambda: st.session_state.crud_agent.process(user_message, context=context),
-            "SemanticSearch": lambda: st.session_state.semantic_agent.answer(user_message),
-            "Analytics": lambda: st.session_state.analytics_agent.answer_question(user_message),
-            "History": lambda: st.session_state.history_agent.answer(user_message),
-            "Recommendation": lambda: _format_scored_list(st.session_state.recommendation_engine.recommend(role=_extract_role(user_message), location=_extract_location(user_message))),
-            "TeamBuild": lambda: st.session_state.team_builder.build(user_message).get("summary", "No team summary"),
-            "Promotion": lambda: _format_scored_list(st.session_state.promotion_analyzer.analyze()),
-            "Transfer": lambda: _format_scored_list(st.session_state.transfer_analyzer.analyze()),
-            "Attrition": lambda: _format_scored_list(st.session_state.attrition_risk.analyze(), label="risk"),
-            "SkillGap": lambda: _format_skill_gap(st.session_state.skill_gap_agent.analyze(user_message)),
-            "Insights": lambda: json.dumps(st.session_state.insight_agent.full_scorecard(), default=str),
-        }
-        return tier1_map.get(intent, lambda: f"Unknown intent '{intent}'")()
+            return tier1_map.get(intent, lambda: f"Unknown intent '{intent}'")()
 
     # Progress bar and status
     prog_bar = st.progress(0.0)

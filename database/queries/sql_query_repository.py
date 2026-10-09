@@ -206,16 +206,26 @@ Query Rules:
         """
         cleaned = _COMMENT_RE.sub("", sql).strip()
 
-        # Detect the primary table
-        from_match = re.search(r"FROM\s+(\w+)", cleaned, re.IGNORECASE)
-        if not from_match:
-            raise RepositoryError("Cannot determine primary table from SQL.")
-        table_alias = from_match.group(1).lower()
-        table_name = _TABLE_MAP.get(table_alias, table_alias)
+        # Detect all referenced tables
+        all_refs = [t.lower() for t in re.findall(r"\b(?:FROM|JOIN)\s+(\w+)", cleaned, re.IGNORECASE)]
+        
+        # Determine if we should query the rich joined employee dataset
+        employee_related = {
+            "employees", "employee_profiles", "contact_info", "addresses",
+            "employment_details", "position_history",
+        }
+        
+        should_fetch_employees = (
+            any(t in employee_related for t in all_refs)
+            or len(all_refs) > 1
+            or "employee_no" in cleaned.lower()
+            or "full_name" in cleaned.lower()
+            or "position_title" in cleaned.lower()
+            or "city" in cleaned.lower()
+        )
 
-        # Build a selective fetch
         try:
-            if table_name == EMPLOYEES_TABLE:
+            if should_fetch_employees:
                 # Fetch full join to support joins in memory
                 joined_select = (
                     f"*,"
@@ -230,12 +240,17 @@ Query Rules:
                 )
                 raw_rows = response.data if self._has_data(response) else []
                 rows = [self._flatten_employee_row(r) for r in raw_rows]
+                table_name = EMPLOYEES_TABLE
             else:
+                from_match = re.search(r"FROM\s+(\w+)", cleaned, re.IGNORECASE)
+                table_alias = from_match.group(1).lower() if from_match else "departments"
+                table_name = _TABLE_MAP.get(table_alias, table_alias)
                 response = self._execute(
                     self.client.table(table_name).select("*")
                 )
                 rows = response.data if self._has_data(response) else []
-        except Exception:
+        except Exception as exc:
+            self.logger.warning("Supabase table query fallback encountered error: %s", exc)
             rows = []
 
         # Apply post-fetch filtering and aggregation
@@ -270,64 +285,131 @@ Query Rules:
             return rows
 
         where_text = where_clause.group(1).strip().rstrip(";").rstrip(")").strip()
-
         filtered = rows
-        
-        # 1. Parse simple equals (=) conditions safely
+
+        def _get_val(row_dict: dict, col: str):
+            col_l = col.lower()
+            if col_l in row_dict:
+                return row_dict[col_l]
+            # Try matching without prefixes or alias
+            for k, v in row_dict.items():
+                if k.lower() == col_l or k.lower().endswith(f"_{col_l}"):
+                    return v
+            return None
+
+        # 1. Parse simple equals (=) conditions (e.g. d.department_name = 'AI' or is_active = true)
         for eq_match in re.finditer(
-            r"(\w+)\.(\w+)\s*=\s*(?:['\"]([^'\"]+)['\"]|([^\s'\")]+))",
+            r"(?:(\w+)\.)?(\w+)\s*=\s*(?:['\"]([^'\"]+)['\"]|([^\s'\")]+))",
             where_text, re.IGNORECASE,
         ):
             column = eq_match.group(2).lower()
-            value = (eq_match.group(3) or eq_match.group(4) or "").strip()
+            val_quoted = eq_match.group(3)
+            val_unquoted = eq_match.group(4)
+            value = (val_quoted or val_unquoted or "").strip()
 
-            # Handle boolean true/false
-            if value.lower() == "true":
-                filtered = [r for r in filtered if r.get(column) in (True, "true", "True")]
-            elif value.lower() == "false":
-                filtered = [r for r in filtered if r.get(column) in (False, "false", "False")]
+            # If unquoted value looks like a column/table join reference (e.g. d.id, position_history.employee_no), skip it
+            if val_unquoted and ("." in val_unquoted or val_unquoted.lower() in ("id", "employee_no", "department_id")):
+                continue
+
+            if value.lower() in ("true", "false"):
+                target_bool = value.lower() == "true"
+                filtered = [r for r in filtered if bool(_get_val(r, column)) == target_bool]
             else:
-                filtered = [r for r in filtered if str(r.get(column, "")) == value]
+                filtered = [
+                    r for r in filtered
+                    if str(_get_val(r, column) or "").strip().lower() == value.lower()
+                ]
 
-        # 2. Parse ILIKE conditions safely
-        for ilike_match in re.finditer(
-            r"(\w+)\.(\w+)\s+ILIKE\s+['\"]%?([^%'\"]+)%?['\"]",
+        # 2. Parse ILIKE / LIKE conditions (e.g. ph.position_title ILIKE '%Manager%')
+        for like_match in re.finditer(
+            r"(?:(\w+)\.)?(\w+)\s+(?:ILIKE|LIKE)\s+['\"]%?([^%'\"]+)%?['\"]",
             where_text, re.IGNORECASE,
         ):
-            column = ilike_match.group(2).lower()
-            val = ilike_match.group(3).strip().lower()
-            filtered = [r for r in filtered if val in str(r.get(column, "")).lower()]
+            column = like_match.group(2).lower()
+            val = like_match.group(3).strip().lower()
+            filtered = [
+                r for r in filtered
+                if val in str(_get_val(r, column) or "").lower()
+            ]
 
-        # 3. Parse comparisons (>, <, >=, <=) safely
+        # 3. Parse IN conditions (e.g. d.department_name IN ('AI', 'Engineering'))
+        for in_match in re.finditer(
+            r"(?:(\w+)\.)?(\w+)\s+IN\s*\(([^)]+)\)",
+            where_text, re.IGNORECASE,
+        ):
+            column = in_match.group(2).lower()
+            in_vals = [
+                v.strip().strip("'\"").lower()
+                for v in in_match.group(3).split(",")
+            ]
+            filtered = [
+                r for r in filtered
+                if str(_get_val(r, column) or "").strip().lower() in in_vals
+            ]
+
+        # 4. Parse BETWEEN conditions (e.g. joining_date BETWEEN '2022-01-01' AND '2023-12-31')
+        for bet_match in re.finditer(
+            r"(?:(\w+)\.)?(\w+)\s+BETWEEN\s+['\"]?([^'\"]+?)['\"]?\s+AND\s+['\"]?([^'\"]+?)['\"]?(?:\s|$)",
+            where_text, re.IGNORECASE,
+        ):
+            column = bet_match.group(2).lower()
+            start_v = bet_match.group(3).strip()
+            end_v = bet_match.group(4).strip()
+            filtered = [
+                r for r in filtered
+                if start_v <= str(_get_val(r, column) or "").strip()[:len(start_v)] <= end_v
+            ]
+
+        # 5. Parse comparisons (>, <, >=, <=) including numbers and ISO dates
         for comp_match in re.finditer(
-            r"(\w+)\.(\w+)\s*(>=|<=|>|<)\s*([0-9.]+)",
+            r"(?:(\w+)\.)?(\w+)\s*(>=|<=|>|<)\s*(?:['\"]([^'\"]+)['\"]|([0-9.\-]+))",
             where_text, re.IGNORECASE,
         ):
             column = comp_match.group(2).lower()
             op = comp_match.group(3)
-            val = float(comp_match.group(4))
-            
-            def compare(row_val, operator, limit):
-                try:
-                    num = float(row_val)
-                    if operator == ">": return num > limit
-                    if operator == "<": return num < limit
-                    if operator == ">=": return num >= limit
-                    if operator == "<=": return num <= limit
-                except (ValueError, TypeError):
-                    return False
-            
-            filtered = [r for r in filtered if compare(r.get(column), op, val)]
+            val_str = comp_match.group(4) or comp_match.group(5)
 
-        # 4. Parse IS NOT NULL conditions
+            def compare(row_val, operator, limit_str):
+                if row_val is None:
+                    return False
+                r_str = str(row_val).strip()
+                try:
+                    # Try numerical comparison first
+                    num = float(r_str)
+                    lim_num = float(limit_str)
+                    if operator == ">": return num > lim_num
+                    if operator == "<": return num < lim_num
+                    if operator == ">=": return num >= lim_num
+                    if operator == "<=": return num <= lim_num
+                except (ValueError, TypeError):
+                    # Fallback to ISO string / date comparison
+                    l_val = limit_str[:len(r_str)]
+                    r_val = r_str[:len(limit_str)]
+                    if operator == ">": return r_str > limit_str
+                    if operator == "<": return r_str < limit_str
+                    if operator == ">=": return r_str >= limit_str
+                    if operator == "<=": return r_str <= limit_str
+                return False
+
+            filtered = [r for r in filtered if compare(_get_val(r, column), op, val_str)]
+
+        # 6. Parse IS NOT NULL / IS NULL conditions
         for ne_match in re.finditer(
-            r"(\w+)\.(\w+)\s*(?:IS\s+NOT|!=|<>)\s*(?:NULL|null)",
+            r"(?:(\w+)\.)?(\w+)\s*(?:IS\s+NOT|!=|<>)\s*(?:NULL|null)",
             where_text, re.IGNORECASE,
         ):
             column = ne_match.group(2).lower()
-            filtered = [r for r in filtered if r.get(column) is not None]
+            filtered = [r for r in filtered if _get_val(r, column) is not None]
+
+        for null_match in re.finditer(
+            r"(?:(\w+)\.)?(\w+)\s+IS\s+NULL",
+            where_text, re.IGNORECASE,
+        ):
+            column = null_match.group(2).lower()
+            filtered = [r for r in filtered if _get_val(r, column) is None or str(_get_val(r, column)).strip() == ""]
 
         return filtered
+
 
     def _post_aggregate(
         self, sql: str, rows: List[Dict[str, Any]],

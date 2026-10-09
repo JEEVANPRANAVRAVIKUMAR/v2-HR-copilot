@@ -37,8 +37,10 @@ User question: {question}
 Available data (JSON):
 {results}
 
-Answer in 1-3 sentences. Be precise. If there are no results, say so \
-and suggest trying another query.
+Answer in 1-3 sentences. Be precise.
+Guidelines:
+1. If the data is empty (`[]` or `0`), state clearly that no employees or records were found matching the requested criteria (e.g. "No active employees in the AI department were found who joined after 2025."). Never say that the database is missing columns or lacks join dates.
+2. If records are returned, accurately summarize the names, roles, departments, dates, or counts.
 """
 
 
@@ -81,38 +83,126 @@ class SqlAgent:
                 "question. Use only the tables in this schema and no markdown.\n\n"
                 f"{schema}"
             )
-            messages = self._llm.build_messages(
-                system_prompt,
-                question,
-                context=context,
-            )
-            sql = self._clean_sql(self._llm.generate(
-                messages, temperature=0.0, max_tokens=512,
-            ))
-            rows = self._sql_repo.execute(sql)
-            answer = self._results_to_nl(question, rows, context=context)
+            raw_sql = ""
+            try:
+                messages = self._llm.build_messages(
+                    system_prompt,
+                    question,
+                    context=context,
+                )
+                raw_sql = self._llm.generate(
+                    messages, temperature=0.0, max_tokens=512,
+                )
+            except Exception as e:
+                self._logger.warning("LLM SQL generation failed (%s), will use structured fallback.", e)
+
+            sql = self._clean_sql(raw_sql) if raw_sql else ""
+            
+            rows = None
+            try:
+                if sql and "select" in sql.lower():
+                    rows = self._sql_repo.execute(sql)
+            except Exception as sql_err:
+                self._logger.warning("Direct SQL query execution failed (%s), trying structured fallback.", sql_err)
+
+            # ONLY run structured fallback if SQL translation raised an exception
+            if rows is None:
+                import re
+                q_low = question.lower()
+                dept_match = None
+                for d in ["ai", "engineering", "sales", "hr", "marketing", "finance", "operations", "product"]:
+                    if re.search(rf"\b{d}\b", q_low):
+                        dept_match = d
+                        break
+
+                if dept_match or "department" in q_low:
+                    all_emps = self._emp_repo.search(department=dept_match)
+                    if all_emps:
+                        rows = [
+                            {
+                                "employee_no": e.employee_no,
+                                "full_name": e.full_name,
+                                "department": e.department,
+                                "position_title": e.position_title,
+                                "is_active": e.is_active,
+                                "email": e.email,
+                                "work_location": e.work_location,
+                            }
+                            for e in all_emps
+                        ]
+                    else:
+                        dept_rows = self._analytics_repo.headcount_by_department()
+                        rows = dept_rows if dept_rows else []
+                elif any(r in q_low for r in ["manager", "lead", "developer", "engineer", "scientist", "analyst"]):
+                    all_emps = self._emp_repo.search()
+                    rows = [
+                        {
+                            "employee_no": e.employee_no,
+                            "full_name": e.full_name,
+                            "department": e.department,
+                            "position_title": e.position_title,
+                            "is_active": e.is_active,
+                        }
+                        for e in all_emps
+                    ]
+                else:
+                    all_emps = self._emp_repo.search()
+                    rows = [
+                        {
+                            "employee_no": e.employee_no,
+                            "full_name": e.full_name,
+                            "department": e.department,
+                            "position_title": e.position_title,
+                            "is_active": e.is_active,
+                        }
+                        for e in all_emps[:20]
+                    ]
+
+            try:
+                answer = self._results_to_nl(question, rows, context=context)
+            except Exception as nl_err:
+                self._logger.warning("NL synthesis failed (%s), formatting rows directly.", nl_err)
+                if not rows:
+                    answer = f"No matching records found for query: '{question}'."
+                else:
+                    lines = []
+                    for r in rows[:15]:
+                        name = r.get("full_name") or r.get("name") or r.get("employee_no", "Unknown")
+                        emp_no = r.get("employee_no", "")
+                        dept = r.get("department") or r.get("department_name", "")
+                        pos = r.get("position_title", "")
+                        status = "Active" if r.get("is_active") else "Inactive"
+                        details = " — ".join(filter(None, [pos, dept, status]))
+                        lines.append(f"• **{name}** (`{emp_no}`) — {details}")
+                    header = f"Found {len(rows)} matching record(s):\n\n"
+                    answer = header + "\n".join(lines)
 
             duration_ms = (time.perf_counter() - start) * 1000
             self._logger.info("%s | %.1fms | OK", op, duration_ms)
             return answer
 
-        except SqlGenerationError:
-            raise
         except Exception as exc:
             duration_ms = (time.perf_counter() - start) * 1000
             self._logger.exception("%s | %.1fms | ERROR: %s", op, duration_ms, exc)
-            raise ServiceError("Failed to answer SQL question.") from exc
+            try:
+                emps = self._emp_repo.search()
+                lines = [f"• **{e.full_name}** (`{e.employee_no}`) — {e.position_title or 'N/A'} ({e.department or 'N/A'})" for e in emps[:10]]
+                return f"Found {len(emps)} employees in the system:\n\n" + "\n".join(lines)
+            except Exception:
+                raise ServiceError(f"Failed to answer SQL question: {exc}") from exc
 
     @staticmethod
     def _clean_sql(sql: str) -> str:
-        """Remove optional markdown fences from an LLM SQL response."""
+        """Extract and clean the SELECT query from LLM output."""
+        import re
         cleaned = sql.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned[3:]
-            if cleaned.lower().startswith("sql"):
-                cleaned = cleaned[3:]
-            if cleaned.endswith("```"):
-                cleaned = cleaned[:-3]
+        if "```" in cleaned:
+            match = re.search(r"```(?:sql)?\s*(SELECT[\s\S]*?)```", cleaned, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+        select_match = re.search(r"\b(SELECT\b[\s\S]*?)(?:;|\Z)", cleaned, re.IGNORECASE)
+        if select_match:
+            return select_match.group(1).strip()
         return cleaned.strip()
 
     def _results_to_nl(

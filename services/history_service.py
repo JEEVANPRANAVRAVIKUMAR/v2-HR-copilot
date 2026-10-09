@@ -205,26 +205,55 @@ class EmployeeHistoryService:
                 emp_repo = EmployeeRepository()
                 profile = emp_repo.get_full_profile(employee_no)
                 if profile and profile.joining_date:
+                    j_date = profile.joining_date
+                    if isinstance(j_date, str):
+                        from datetime import date
+                        j_date = date.fromisoformat(j_date)
                     joining_dt = datetime(
-                        profile.joining_date.year,
-                        profile.joining_date.month,
-                        profile.joining_date.day,
+                        j_date.year,
+                        j_date.month,
+                        j_date.day,
                         tzinfo=timezone.utc
                     )
+                elif profile and profile.created_at:
+                    c_dt = profile.created_at
+                    if isinstance(c_dt, str):
+                        c_dt = datetime.fromisoformat(c_dt.replace("Z", "+00:00"))
+                    if c_dt.tzinfo is None:
+                        c_dt = c_dt.replace(tzinfo=timezone.utc)
+                    joining_dt = c_dt
             except Exception:
                 pass
 
             entries = [
                 self._row_to_entry(r) for r in chronological
             ]
+            if not entries and profile:
+                j_str = str(profile.joining_date) if profile.joining_date else (joining_dt.strftime("%Y-%m-%d") if joining_dt else "N/A")
+                role_str = profile.position_title or "Staff"
+                dept_str = profile.department or "General"
+                occurred_time = joining_dt or datetime.now(timezone.utc)
+                entries.append(
+                    TimelineEntry(
+                        event_type=HistoryEventType.HIRED,
+                        occurred_at=occurred_time,
+                        to_value=profile.full_name,
+                        field="position_title",
+                        note=f"Hired as {role_str} in {dept_str} department",
+                        description=f"[{j_str}] Hired as {role_str} in {dept_str} department.",
+                    )
+                )
+
             stats = self._compute_stats(
                 chronological, now_dt, stall_threshold_days,
                 joining_dt=joining_dt, profile=profile,
             )
 
+            resolved_name = full_name or (profile.full_name if profile else None)
+
             timeline = EmployeeTimeline(
                 employee_no=employee_no,
-                full_name=full_name,
+                full_name=resolved_name,
                 events=entries,
                 stats=stats,
             )

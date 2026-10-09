@@ -209,17 +209,22 @@ class AnalyticsAgent:
             )
             return answer
 
-        except (LlmError, ServiceError):
-            raise
-
-        except Exception as exc:
-            duration_ms = (time.perf_counter() - start) * 1000
-            self._logger.exception(
-                "%s | %.1fms | ERROR", op, duration_ms,
-            )
-            raise ServiceError(
-                "Failed to answer analytics question."
-            ) from exc
+        except (LlmError, ServiceError, Exception) as exc:
+            self._logger.warning("Analytics LLM explanation failed (%s), returning formatted metrics directly.", exc)
+            try:
+                snapshot = self._repo.full_snapshot()
+                total = snapshot.get("total_headcount", 0)
+                by_dept = snapshot.get("by_department", {})
+                dept_summary = ", ".join(f"{d}: {c}" for d, c in list(by_dept.items())[:6])
+                return (
+                    f"**Workforce Analytics Snapshot:**\n\n"
+                    f"• **Total Headcount:** {total}\n"
+                    f"• **Departments:** {dept_summary}\n"
+                    f"• **Average Tenure:** {snapshot.get('average_tenure_years', 0):.1f} years\n"
+                    f"• **Active Status:** {snapshot.get('by_status', {}).get('Active', total)} active"
+                )
+            except Exception:
+                raise ServiceError(f"Failed to answer analytics question: {exc}") from exc
 
     # ----------------------------------------------------------------
     # Internal

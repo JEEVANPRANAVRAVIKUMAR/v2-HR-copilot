@@ -414,7 +414,39 @@ class EmployeeService:
         except Exception as exc:
             duration_ms = (time.perf_counter() - start) * 1000
             self._log_operation(op, employee_no, duration_ms, "ERROR")
-            raise ServiceError("Failed to update employee.") from exc
+    def save_employee_details(
+        self,
+        employee_no: str,
+        *,
+        email: str | None = None,
+        phone: str | None = None,
+        employment_type: str | None = None,
+        joining_date: str | None = None,
+        status: str | None = None,
+        work_location: str | None = None,
+        department: str | None = None,
+        position_title: str | None = None,
+    ) -> None:
+        """
+        Persist detailed employee metadata (contact info, employment details, position).
+        """
+        if email or phone:
+            self._repo.upsert_contact_info(employee_no, email=email, phone=phone)
+        if employment_type or joining_date or status or work_location:
+            self._repo.upsert_employment_details(
+                employee_no,
+                employment_type=employment_type,
+                joining_date=joining_date,
+                status=status,
+                work_location=work_location,
+            )
+        if department or position_title:
+            self._repo.upsert_position_history(
+                employee_no,
+                position_title=position_title,
+                department_name=department,
+                start_date=joining_date,
+            )
 
     # ----------------------------------------------------------------
     # Status transitions

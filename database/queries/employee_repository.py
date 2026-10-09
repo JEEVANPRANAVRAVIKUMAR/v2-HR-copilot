@@ -93,11 +93,12 @@ class EmployeeRepository(BaseRepository):
             Employee if found else None.
         """
         try:
+            clean_no = str(employee_no).strip()
             response = self._execute(
                 self.client
                 .table(EMPLOYEES_TABLE)
                 .select("*")
-                .eq("employee_no", employee_no)
+                .ilike("employee_no", clean_no)
                 .limit(1)
             )
             if not self._has_data(response):
@@ -122,13 +123,26 @@ class EmployeeRepository(BaseRepository):
             List of matching employees.
         """
         try:
+            clean_name = str(name).strip()
+            no_space_name = clean_name.replace(" ", "")
+            filters = [f"full_name.ilike.%{clean_name}%"]
+            if no_space_name != clean_name:
+                filters.append(f"full_name.ilike.%{no_space_name}%")
+            
             response = self._execute(
                 self.client
                 .table(EMPLOYEES_TABLE)
                 .select("*")
-                .ilike("full_name", f"%{name}%")
+                .or_(",".join(filters))
             )
             if not self._has_data(response):
+                # In-memory fallback
+                all_res = self._execute(self.client.table(EMPLOYEES_TABLE).select("*"))
+                if self._has_data(all_res):
+                    return [
+                        Employee.model_validate(r) for r in all_res.data
+                        if no_space_name.lower() in str(r.get("full_name", "")).replace(" ", "").lower()
+                    ]
                 return []
             return [
                 Employee.model_validate(row) for row in response.data
@@ -182,13 +196,8 @@ class EmployeeRepository(BaseRepository):
             List of matching employees.
         """
         try:
-            q = self.client.table(EMPLOYEES_TABLE).select("*")
-
-            if query:
-                q = q.or_(
-                    f"employee_no.ilike.%{query}%,"
-                    f"full_name.ilike.%{query}%"
-                )
+            select_str = f"*,{POSITION_HISTORY_TABLE}(*,{DEPARTMENTS_TABLE}(*))"
+            q = self.client.table(EMPLOYEES_TABLE).select(select_str)
 
             if is_active is not None:
                 q = q.eq("is_active", is_active)
@@ -197,9 +206,62 @@ class EmployeeRepository(BaseRepository):
 
             if not self._has_data(response):
                 return []
-            return [
-                Employee.model_validate(row) for row in response.data
-            ]
+
+            results = []
+            clean_q = str(query).strip().lower() if query else None
+            no_space_q = clean_q.replace(" ", "") if clean_q else None
+            q_words = [w for w in clean_q.split() if len(w) > 1] if clean_q else []
+
+            for raw_row in response.data:
+                row = dict(raw_row)
+                pos = row.get(POSITION_HISTORY_TABLE)
+                pos_list = [pos] if isinstance(pos, dict) else (pos if isinstance(pos, list) else [])
+                dept_name = None
+                pos_name = None
+
+                if pos_list:
+                    sorted_pos = sorted(
+                        pos_list,
+                        key=lambda x: x.get("start_date", "") or x.get("effective_date", "") or "",
+                        reverse=True,
+                    )
+                    latest = sorted_pos[0]
+                    depts = latest.get("departments") or latest.get(DEPARTMENTS_TABLE)
+                    dept_name = (
+                        depts.get("department_name") if isinstance(depts, dict)
+                        else (depts[0].get("department_name") if isinstance(depts, list) and len(depts) > 0 else latest.get("department"))
+                    )
+                    pos_name = latest.get("position_title")
+
+                row["department"] = dept_name
+                row["position_title"] = pos_name
+
+                # Filter by text query
+                if clean_q:
+                    emp_no = str(row.get("employee_no", "")).lower()
+                    name = str(row.get("full_name", "")).lower()
+                    name_no_space = name.replace(" ", "")
+
+                    matched = (
+                        clean_q in emp_no
+                        or clean_q in name
+                        or no_space_q in name_no_space
+                        or (q_words and any(w in name for w in q_words))
+                    )
+                    if not matched:
+                        continue
+
+                if department:
+                    if not dept_name or department.lower() not in str(dept_name).lower():
+                        continue
+
+                if position_title:
+                    if not pos_name or position_title.lower() not in str(pos_name).lower():
+                        continue
+
+                results.append(Employee.model_validate(row))
+
+            return results
 
         except Exception as exc:
             self.logger.exception("Employee search failed.")
@@ -343,7 +405,7 @@ class EmployeeRepository(BaseRepository):
                 self.client
                 .table(EMPLOYEES_TABLE)
                 .select(joined_select)
-                .eq("employee_no", employee_no)
+                .ilike("employee_no", str(employee_no).strip())
                 .limit(1)
             )
             if not self._has_data(response):
@@ -397,7 +459,7 @@ class EmployeeRepository(BaseRepository):
                 if pos_list:
                     positions_sorted = sorted(
                         pos_list,
-                        key=lambda x: x.get("effective_date", ""),
+                        key=lambda x: x.get("start_date", "") or x.get("effective_date", "") or "",
                         reverse=True,
                     )
                     latest = positions_sorted[0]
@@ -418,3 +480,88 @@ class EmployeeRepository(BaseRepository):
                 "Failed fetching full profile for %s.", employee_no,
             )
             raise RepositoryError("Unable to fetch full profile.") from exc
+
+    def upsert_contact_info(
+        self, employee_no: str, email: str | None = None, phone: str | None = None,
+    ) -> None:
+        """Upsert contact details for an employee."""
+        try:
+            data = {"employee_no": employee_no}
+            if email:
+                data["email"] = email
+            if phone:
+                data["phone"] = phone
+            if len(data) > 1:
+                res = self.client.table(CONTACT_INFO_TABLE).select("*").eq("employee_no", employee_no).execute()
+                if self._has_data(res):
+                    self.client.table(CONTACT_INFO_TABLE).update(data).eq("employee_no", employee_no).execute()
+                else:
+                    self.client.table(CONTACT_INFO_TABLE).insert(data).execute()
+        except Exception as exc:
+            self.logger.warning("Upsert contact_info failed for %s: %s", employee_no, exc)
+
+    def upsert_employment_details(
+        self,
+        employee_no: str,
+        employment_type: str | None = None,
+        joining_date: str | None = None,
+        status: str | None = None,
+        work_location: str | None = None,
+    ) -> None:
+        """Upsert employment details for an employee."""
+        try:
+            data = {"employee_no": employee_no}
+            if employment_type:
+                data["employment_type"] = employment_type
+            if joining_date:
+                data["joining_date"] = joining_date
+            if status:
+                data["status"] = status
+            if work_location:
+                data["work_location"] = work_location
+            if len(data) > 1:
+                res = self.client.table(EMPLOYMENT_DETAILS_TABLE).select("*").eq("employee_no", employee_no).execute()
+                if self._has_data(res):
+                    self.client.table(EMPLOYMENT_DETAILS_TABLE).update(data).eq("employee_no", employee_no).execute()
+                else:
+                    self.client.table(EMPLOYMENT_DETAILS_TABLE).insert(data).execute()
+        except Exception as exc:
+            self.logger.warning("Upsert employment_details failed for %s: %s", employee_no, exc)
+
+    def upsert_position_history(
+        self,
+        employee_no: str,
+        position_title: str | None = None,
+        department_name: str | None = None,
+        start_date: str | None = None,
+    ) -> None:
+        """Upsert position and department assignment for an employee."""
+        try:
+            dept_id = None
+            if department_name:
+                d_res = (
+                    self.client
+                    .table(DEPARTMENTS_TABLE)
+                    .select("id")
+                    .ilike("department_name", f"%{department_name}%")
+                    .limit(1)
+                    .execute()
+                )
+                if self._has_data(d_res):
+                    dept_id = d_res.data[0].get("id")
+
+            data = {"employee_no": employee_no}
+            if position_title:
+                data["position_title"] = position_title
+            if dept_id is not None:
+                data["department_id"] = dept_id
+            if start_date:
+                data["start_date"] = start_date
+            if len(data) > 1:
+                res = self.client.table(POSITION_HISTORY_TABLE).select("*").eq("employee_no", employee_no).execute()
+                if self._has_data(res):
+                    self.client.table(POSITION_HISTORY_TABLE).update(data).eq("employee_no", employee_no).execute()
+                else:
+                    self.client.table(POSITION_HISTORY_TABLE).insert(data).execute()
+        except Exception as exc:
+            self.logger.warning("Upsert position_history failed for %s: %s", employee_no, exc)

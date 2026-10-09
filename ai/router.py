@@ -95,20 +95,19 @@ Do NOT use CRUD for "list departments" or "list positions" — those should go t
 
 - Analytics: Statistical or aggregate questions about the workforce. \
 Example: "How many employees per department?", "Average tenure", \
-"Headcount trend over time".
+"Headcount trend over time", "How many active employees are there?".
 
 - SemanticSearch: Finding employees by natural-language descriptions, \
 skills, or soft criteria. Example: "Find someone with Python experience", \
-"Who worked on the payroll project?".
+"Who worked on the payroll project?", "Find a data scientist who knows machine learning".
 
 - SQL: Questions that require a database query to answer — typically \
 filtered, cross-referenced, or computed queries that aren't simple \
 list-all or single-employee lookups. Also use SQL for simple lists of \
 departments or positions (e.g. "list departments", "show all departments"). \
 Example: "Who joined last month?", "Employees with salary > 100k", \
-"list departments", "show all departments". \
-Do NOT use SQL for "show all employees" or "list everyone" —
-those are CRUD.
+"list departments", "show all departments", "How many employees are in Chennai?". \
+Do NOT use SQL for "show all employees" or "list everyone" — those are CRUD.
 
 - History: Questions about a specific employee's career timeline, \
 promotion history, role tenure, or stall detection. Example: \
@@ -117,24 +116,28 @@ promotion history, role tenure, or stall detection. Example: \
 
 - Recommendation: Candidate ranking for a role with requirements \
 and location. Example: "Recommend backend devs for a FinTech project \
-in Chennai.", "Find best candidates for QA Lead in Pune.".
+in Chennai.", "Find best candidates for QA Lead in Pune.", \
+"Recommend data scientists in Chennai".
 
 - TeamBuild: Assemble a multi-role team from a project brief. \
 Example: "Build the best team for an AI healthcare project.", \
-"Assemble a DevOps team."
+"Assemble a DevOps team.", "Build a team of 1 Data Analyst and 1 Manager".
 
 - Promotion: Identify who is due for promotion. \
-Example: "Who should we promote?", "Find employees ready for advancement."
+Example: "Who should we promote?", "Find employees ready for advancement.", \
+"Who should we promote next?".
 
 - Transfer: Suggest internal department transfers. \
-Example: "Suggest internal moves.", "Who could transfer to Engineering?"
+Example: "Suggest internal moves.", "Who could transfer to Engineering?", \
+"Suggest internal transfers for understaffed departments".
 
 - Attrition: Identify attrition-risk indicators. \
-Example: "Who is at risk of leaving?", "Flag attrition-prone employees."
+Example: "Who is at risk of leaving?", "Flag attrition-prone employees.", \
+"Who has high attrition risk?".
 
 - SkillGap: Skill-gap analysis and hiring-cost estimation. \
 Example: "What skills are we missing for a new AI centre in Hyderabad?", \
-"Grow the AI division 40% under budget."
+"Grow the AI division 40% under budget.", "What are the skill gaps for our office?".
 
 - Insights: Workforce scorecard with history-backed metrics. \
 Example: "Give me the workforce scorecard.", \
@@ -145,10 +148,11 @@ Use this when the question clearly needs TWO OR MORE of the above \
 agents and one single agent cannot answer it alone. \
 Example: "We're opening an AI research centre in Hyderabad; \
 recommend transfers, find skill gaps, estimate hiring cost, and \
-summarize.", "How hiring trends correlated with promotion trends?"
+summarize.", "How hiring trends correlated with promotion trends?", \
+"Recommend transfers to Engineering and find the skill gaps there."
 
-Respond with a JSON object containing exactly three keys:
-{"intent": "<one of the thirteen>", "reasoning": "<why>", "confidence": <0.0-1.0>}
+Respond with a compact JSON object. Put the "intent" key first:
+{"intent": "<one of the thirteen>", "reasoning": "<short reason, max 15 words>", "confidence": <0.0-1.0>}
 
 Do NOT include any text outside the JSON object.
 """
@@ -202,10 +206,10 @@ class AIRouter:
             raw = self._llm.generate(
                 messages,
                 temperature=0.1,
-                max_tokens=256,
+                max_tokens=512,
             ).strip()
 
-            decision = self._parse_decision(raw)
+            decision = self._parse_decision(raw, message=message)
 
             duration_ms = (time.perf_counter() - start) * 1000
             self._logger.info(
@@ -219,33 +223,31 @@ class AIRouter:
 
             return decision
 
-        except LlmError:
-            raise ServiceError("LLM classification failed.") from None
-
-        except ServiceError:
-            raise
-
-        except Exception as exc:
+        except (LlmError, Exception) as exc:
             duration_ms = (time.perf_counter() - start) * 1000
-            self._logger.exception(
-                "%s | %.1fms | ERROR: %s",
+            self._logger.warning(
+                "%s | %.1fms | LLM classification failed (%s) — invoking heuristic fallback",
                 op,
                 duration_ms,
                 exc,
             )
-            raise ServiceError("Failed to classify request.") from exc
+            try:
+                return self._parse_decision("", message=message)
+            except Exception:
+                raise ServiceError(f"Failed to classify request: {exc}") from exc
 
     # ----------------------------------------------------------------
     # Helpers
     # ----------------------------------------------------------------
 
     @staticmethod
-    def _parse_decision(raw: str) -> RouterDecision:
+    def _parse_decision(raw: str, message: str = "") -> RouterDecision:
         """
-        Parse the LLM's JSON response into a RouterDecision.
+        Parse the LLM's JSON response into a RouterDecision with robust fallbacks.
 
         Args:
             raw: JSON string from the LLM.
+            message: Optional original message for fallback keyword heuristics.
 
         Returns:
             Parsed decision.
@@ -253,6 +255,8 @@ class AIRouter:
         Raises:
             ServiceError: If parsing fails or the intent is unknown.
         """
+        import re
+
         cleaned = raw.strip()
         if cleaned.startswith("```"):
             cleaned = cleaned.strip("`")
@@ -260,23 +264,55 @@ class AIRouter:
                 cleaned = cleaned[4:]
             cleaned = cleaned.strip()
 
+        data: Dict[str, Any] = {}
         try:
-            data: Dict[str, Any] = json.loads(cleaned)
-        except json.JSONDecodeError as exc:
-            import re
+            data = json.loads(cleaned)
+        except Exception:
+            # Fallback 1: Regex extraction from partial or malformed JSON
             intent_match = re.search(r'"intent"\s*:\s*"([^"]+)"', cleaned, re.IGNORECASE)
             confidence_match = re.search(r'"confidence"\s*:\s*([0-9.]+)', cleaned)
-            reasoning_match = re.search(r'"reasoning"\s*:\s*"(.+?)"(?=\s*,\s*"confidence"|\s*\})', cleaned, re.DOTALL)
+            reasoning_match = re.search(r'"reasoning"\s*:\s*"([^"]+)"', cleaned, re.DOTALL)
+            
             if intent_match:
                 data = {
                     "intent": intent_match.group(1).strip(),
-                    "reasoning": reasoning_match.group(1).strip() if reasoning_match else "Fallback parsing due to JSONDecodeError",
-                    "confidence": float(confidence_match.group(1)) if confidence_match else 0.9,
+                    "reasoning": reasoning_match.group(1).strip() if reasoning_match else "Extracted via regex fallback",
+                    "confidence": float(confidence_match.group(1)) if confidence_match else 0.85,
                 }
             else:
-                raise ServiceError(
-                    f"Failed to parse router response: {exc}"
-                ) from exc
+                # Fallback 2: Direct keyword heuristic fallback from user message
+                msg_lower = (message or "").lower()
+                inferred_intent = None
+                if any(w in msg_lower for w in ["promote", "promotion"]):
+                    inferred_intent = IntentType.PROMOTION
+                elif any(w in msg_lower for w in ["transfer"]):
+                    inferred_intent = IntentType.TRANSFER
+                elif any(w in msg_lower for w in ["attrition", "risk of leaving"]):
+                    inferred_intent = IntentType.ATTRITION
+                elif any(w in msg_lower for w in ["skill gap", "missing skills"]):
+                    inferred_intent = IntentType.SKILLGAP
+                elif any(w in msg_lower for w in ["team", "assemble"]):
+                    inferred_intent = IntentType.TEAMBUILD
+                elif any(w in msg_lower for w in ["recommend", "best candidate"]):
+                    inferred_intent = IntentType.RECOMMENDATION
+                elif any(w in msg_lower for w in ["history", "timeline", "stalled", "promoted"]):
+                    inferred_intent = IntentType.HISTORY
+                elif any(w in msg_lower for w in ["how many", "average", "headcount", "distribution", "breakdown", "count"]):
+                    inferred_intent = IntentType.ANALYTICS
+                elif any(w in msg_lower for w in ["python", "skills", "experience", "worked on"]):
+                    inferred_intent = IntentType.SEMANTIC_SEARCH
+                elif any(w in msg_lower for w in ["list everyone", "show all employees", "lookup", "create", "activate"]):
+                    inferred_intent = IntentType.CRUD
+                elif msg_lower:
+                    inferred_intent = IntentType.SQL
+
+                if inferred_intent:
+                    return RouterDecision(
+                        intent=inferred_intent,
+                        reasoning="Heuristic fallback classification",
+                        confidence=0.75,
+                    )
+                raise ServiceError(f"Failed to parse router response: {raw}")
 
         if not isinstance(data, dict):
             raise ServiceError("Router response must be a JSON object.")
@@ -284,9 +320,27 @@ class AIRouter:
         intent_value = data.get("intent", "")
         intent_str = intent_value.strip() if isinstance(intent_value, str) else ""
 
-        try:
-            intent = IntentType(intent_str)
-        except ValueError:
+        # Map common case variations and synonyms
+        normalized_intents = {e.value.lower(): e for e in IntentType}
+        intent = normalized_intents.get(intent_str.lower())
+
+        if not intent:
+            # Check for synonyms
+            synonyms = {
+                "search": IntentType.SEMANTIC_SEARCH,
+                "semantic_search": IntentType.SEMANTIC_SEARCH,
+                "semantic": IntentType.SEMANTIC_SEARCH,
+                "database": IntentType.SQL,
+                "query": IntentType.SQL,
+                "stats": IntentType.ANALYTICS,
+                "metrics": IntentType.ANALYTICS,
+                "employee": IntentType.CRUD,
+                "career": IntentType.HISTORY,
+                "team": IntentType.TEAMBUILD,
+            }
+            intent = synonyms.get(intent_str.lower())
+
+        if not intent:
             raise ServiceError(
                 f"Unknown intent '{intent_str}'. "
                 f"Must be one of {[e.value for e in IntentType]}."
@@ -309,3 +363,4 @@ class AIRouter:
             reasoning=reasoning,
             confidence=min(max(confidence, 0.0), 1.0),
         )
+

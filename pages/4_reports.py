@@ -152,6 +152,43 @@ if generate_clicked:
 
 st.markdown("</div>", unsafe_allow_html=True)
 
+# ---- Architecture & Stress Test PDF Report Section ----
+st.markdown(
+    '<div class="card" style="border-left: 4px solid #1A365D;">'
+    "<h3>🏛️ Enterprise Architecture & Stress Testing Report</h3>"
+    "<p style='color:#64748B;font-size:0.85rem;margin-bottom:0.75rem;'>"
+    "Download the full technical documentation detailing system architecture patterns, "
+    "multi-agent orchestration, stress-testing resilience benchmarks, and comprehensive feature matrix."
+    "</p>",
+    unsafe_allow_html=True,
+)
+
+col_arch_info, col_arch_btn = st.columns([2, 1])
+with col_arch_info:
+    st.markdown(
+        "**Included in this PDF report:**\n"
+        "- 🏗️ **Layered N-Tier & Multi-Agent Architecture** diagrams\n"
+        "- ⚡ **Stress-Testing Resilience Analysis** (Rate limits, failovers, 100-query validation)\n"
+        "- 🎯 **Complete Feature Breakdown** across all 8 modules and 7 AI workforce engines"
+    )
+
+with col_arch_btn:
+    try:
+        from generate_pdf_report import generate_architecture_pdf_bytes
+        arch_pdf_data = generate_architecture_pdf_bytes()
+        st.download_button(
+            label="📥 Download Architecture PDF Report",
+            data=arch_pdf_data,
+            file_name="Enterprise_Architecture_and_Stress_Test_Report.pdf",
+            mime="application/pdf",
+            type="primary",
+            use_container_width=True,
+        )
+    except Exception as pdf_err:
+        st.error(f"Error loading PDF generator: {pdf_err}")
+
+st.markdown("</div>", unsafe_allow_html=True)
+
 # ---- AI Summary preview ----
 if ai_summary:
     with st.expander("🤖 AI Summary Preview", expanded=False):

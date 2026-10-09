@@ -138,31 +138,73 @@ with tab_list:
 with tab_create:
     st.markdown(
         '<div class="card">'
-        "<h3>New Employee</h3>",
+        "<h3>➕ Create New Employee</h3>"
+        "<p style='color:#64748B;font-size:0.9rem;'>Fill in the employee credentials and role details below.</p>",
         unsafe_allow_html=True,
     )
 
     with st.form("create_form", clear_on_submit=True):
-        col1, col2 = st.columns(2)
+        st.markdown("##### 📌 Basic Credentials")
+        col1, col2, col3 = st.columns(3)
         with col1:
-            new_no = st.text_input("Employee Number *", placeholder="e.g. EMP010")
+            new_no = st.text_input("Employee Number *", placeholder="e.g. EMP1776")
         with col2:
-            new_name = st.text_input("Full Name *", placeholder="e.g. Jane Smith")
-        new_active = st.checkbox("Active", value=True)
+            new_name = st.text_input("Full Name *", placeholder="e.g. Jeevan Pranav")
+        with col3:
+            new_email = st.text_input("Email Address *", placeholder="e.g. jeevan@company.com")
 
-        if st.form_submit_button("Create Employee", type="primary"):
+        st.markdown("##### 🏢 Role & Organization")
+        col4, col5, col6 = st.columns(3)
+        with col4:
+            new_dept = st.selectbox("Department *", ["AI", "Engineering", "Sales", "HR", "Marketing", "Finance", "Operations", "Product"])
+        with col5:
+            new_position = st.text_input("Position Title *", placeholder="e.g. AI Intern / Software Engineer")
+        with col6:
+            new_type = st.selectbox("Employment Type *", ["Full Time", "Part Time", "Intern", "Contract"])
+
+        st.markdown("##### 📅 Timeline & Location")
+        col7, col8, col9 = st.columns(3)
+        with col7:
+            from datetime import date
+            new_joining_date = st.date_input("Joining Date *", value=date.today())
+        with col8:
+            new_location = st.text_input("Work Location", placeholder="e.g. Chennai, Bangalore, Remote")
+        with col9:
+            new_phone = st.text_input("Phone Number", placeholder="e.g. +91 9876543210")
+
+        new_status = st.radio("Employment Status", ["Active", "Inactive"], horizontal=True)
+
+        if st.form_submit_button("🚀 Create Employee Record", type="primary", use_container_width=True):
             if not new_no or not new_name:
-                st.error("Employee Number and Full Name are required.")
+                st.error("⚠️ Employee Number and Full Name are strictly required.")
             else:
                 try:
                     from models.employee import EmployeeCreate
+                    emp_no_clean = new_no.strip()
+                    name_clean = new_name.strip()
+                    is_act = (new_status == "Active")
+
                     data = EmployeeCreate(
-                        employee_no=new_no.strip(),
-                        full_name=new_name.strip(),
-                        is_active=new_active,
+                        employee_no=emp_no_clean,
+                        full_name=name_clean,
+                        is_active=is_act,
                     )
                     result = st.session_state.emp_service.create_employee(data)
-                    st.success(f"✅ {result.full_name} ({result.employee_no}) created.")
+
+                    # Persist child credentials
+                    st.session_state.emp_service.save_employee_details(
+                        emp_no_clean,
+                        email=new_email.strip() if new_email else None,
+                        phone=new_phone.strip() if new_phone else None,
+                        employment_type=new_type,
+                        joining_date=str(new_joining_date),
+                        status=new_status,
+                        work_location=new_location.strip() if new_location else None,
+                        department=new_dept,
+                        position_title=new_position.strip() if new_position else None,
+                    )
+
+                    st.success(f"✅ Employee **{result.full_name}** (`{result.employee_no}`) created successfully with complete credentials!")
                     st.session_state.employees = (
                         st.session_state.emp_service.list_all_employees()
                     )

@@ -36,5 +36,22 @@ class Employee(TimestampMixin):
     id: int | None = None
     employee_no: str
     full_name: str
-    is_active: bool
+    is_active: bool = True
     updated_at: datetime | None = None
+
+    # Joined fields
+    department: str | None = None
+    position_title: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    status: str | None = None
+    employment_type: str | None = None
+    work_location: str | None = None
+    joining_date: str | None = None
+    city: str | None = None
+    full_address: str | None = None
+    dob: str | None = None
+    gender: str | None = None
+    nationality: str | None = None
+    marital_status: str | None = None
+    blood_group: str | None = None

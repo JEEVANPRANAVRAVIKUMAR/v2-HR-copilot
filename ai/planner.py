@@ -325,23 +325,56 @@ class Planner:
         Ask the LLM to decompose the message into a plan.
         Returns a list of step dicts.
         """
-        prompt = DECOMPOSITION_PROMPT.format()
-        msgs = [
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": message},
-        ]
-        raw = self._llm.generate(
-            msgs, temperature=0.1, max_tokens=512,
-        ).strip()
+        try:
+            prompt = DECOMPOSITION_PROMPT.format()
+            msgs = [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": message},
+            ]
+            raw = self._llm.generate(
+                msgs, temperature=0.1, max_tokens=512,
+            ).strip()
 
-        plan_data = self._parse_plan(raw)
-        steps = plan_data.get("steps", [])
+            plan_data = self._parse_plan(raw)
+            steps = plan_data.get("steps", [])
 
-        # Safety cap.
-        if len(steps) > max_steps:
-            steps = steps[:max_steps]
-            plan_data["steps"] = steps
-            plan_data["max_steps"] = max_steps
+            # Safety cap.
+            if len(steps) > max_steps:
+                steps = steps[:max_steps]
+                plan_data["steps"] = steps
+                plan_data["max_steps"] = max_steps
+
+            if steps:
+                return steps
+        except Exception as exc:
+            self._logger.warning("Planner LLM decomposition failed (%s), using deterministic fallback plan.", exc)
+
+        # Deterministic fallback decomposition
+        msg_low = message.lower()
+        steps = []
+        if "transfer" in msg_low and ("skill" in msg_low or "gap" in msg_low):
+            steps = [
+                {"step": 1, "agent": "Transfer", "sub_question": message, "purpose": "Suggest internal transfers"},
+                {"step": 2, "agent": "SkillGap", "sub_question": message, "purpose": "Identify remaining skill gaps"},
+            ]
+        elif "skill" in msg_low or "gap" in msg_low:
+            steps = [{"step": 1, "agent": "SkillGap", "sub_question": message, "purpose": "Analyze skill gaps"}]
+        elif "team" in msg_low or "assemble" in msg_low:
+            steps = [{"step": 1, "agent": "TeamBuild", "sub_question": message, "purpose": "Build project team"}]
+        elif "promot" in msg_low:
+            steps = [{"step": 1, "agent": "Promotion", "sub_question": message, "purpose": "Identify promotion candidates"}]
+        elif "transfer" in msg_low:
+            steps = [{"step": 1, "agent": "Transfer", "sub_question": message, "purpose": "Suggest transfers"}]
+        elif "attrition" in msg_low or "risk" in msg_low:
+            steps = [{"step": 1, "agent": "Attrition", "sub_question": message, "purpose": "Analyze attrition risk"}]
+        elif "recommend" in msg_low:
+            steps = [{"step": 1, "agent": "Recommendation", "sub_question": message, "purpose": "Candidate recommendation"}]
+        elif "stall" in msg_low or "timeline" in msg_low:
+            steps = [{"step": 1, "agent": "History", "sub_question": message, "purpose": "Career timeline analysis"}]
+        elif any(k in msg_low for k in ["how many", "count", "headcount", "average", "ratio"]):
+            steps = [{"step": 1, "agent": "Analytics", "sub_question": message, "purpose": "Workforce analytics"}]
+        else:
+            steps = [{"step": 1, "agent": "SQL", "sub_question": message, "purpose": "Database lookup"}]
 
         return steps
 
@@ -405,6 +438,7 @@ class Planner:
                 prev_results.append(
                     {"step": step_num, "agent": agent_name, "result": f"(failed: {exc})"}
                 )
+                continue
 
         return results, failed_map
 
@@ -419,12 +453,21 @@ class Planner:
         """
         Use the LLM to produce one comprehensive executive answer.
         """
-        if not step_results:
+        valid_results = [
+            r for r in step_results
+            if r and not r.startswith("(failed") and not r.startswith("(skipped")
+        ]
+
+        if not valid_results:
             return (
                 "I planned a multi-step answer but no agents were "
                 "available to execute it. Please try a simpler "
                 "question or verify the agent configuration."
             )
+
+        # If only one step was run, return its answer directly if concise
+        if len(plan) == 1 and valid_results:
+            return valid_results[0]
 
         plan_lines = [
             f"Step {s.get('step')}: {s.get('agent')} → "
@@ -444,15 +487,23 @@ class Planner:
                 )
         result_text = "\n".join(result_lines)
 
-        prompt = SYNTHESIS_PROMPT.format(
-            question=question,
-            plan_text=plan_text,
-            step_results=result_text,
-        )
-        msgs = [{"role": "user", "content": prompt}]
-        return self._llm.generate(
-            msgs, temperature=0.2, max_tokens=768,
-        ).strip()
+        try:
+            prompt = SYNTHESIS_PROMPT.format(
+                question=question,
+                plan_text=plan_text,
+                step_results=result_text,
+            )
+            msgs = [{"role": "user", "content": prompt}]
+            return self._llm.generate(
+                msgs, temperature=0.2, max_tokens=768,
+            ).strip()
+        except Exception as exc:
+            self._logger.warning("LLM synthesis failed (%s), formatting direct multi-step answer.", exc)
+            sections = []
+            for s, r in zip(plan, step_results):
+                if r and not r.startswith("(failed"):
+                    sections.append(f"### 📋 {s.get('agent')} Analysis\n{r}")
+            return "\n\n".join(sections)
 
     @staticmethod
     def _parse_plan(raw: str) -> Dict[str, Any]:
