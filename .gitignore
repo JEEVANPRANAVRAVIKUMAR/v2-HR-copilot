@@ -12,7 +12,16 @@ __pycache__/
 # Environment & Secrets
 .env
 .env.*
+.env.local
+.env.production
+.env.development
 !.env.example
+
+# Firebase & Deployment Caches
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
 
 # Logs & Diagnostics
 logs/
