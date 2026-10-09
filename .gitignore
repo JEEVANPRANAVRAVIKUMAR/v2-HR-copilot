@@ -1,25 +1,42 @@
 # Virtual Environment
 .venv/
+venv/
+ENV/
 
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
 *.pyo
 
-# Environment
+# Environment & Secrets
 .env
+.env.*
+!.env.example
 
-# Logs
-logs/*.log
+# Logs & Diagnostics
+logs/
+*.log
 
-# IDE
+# IDE & Editor files
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# Testing
+# Testing & Linting Caches
 .pytest_cache/
+.ruff_cache/
 .mypy_cache/
+.coverage
+htmlcov/
 
-# OS
+# Temporary Directories & Dumps
+AI_HR_chatbot-new-/
+*.tmp
+migration_error.txt
+
+# OS Generated Files
 .DS_Store
 Thumbs.db
+desktop.ini

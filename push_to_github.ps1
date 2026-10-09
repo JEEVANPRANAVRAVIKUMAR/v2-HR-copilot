@@ -4,14 +4,21 @@ Write-Host "🚀 Pushing Enterprise HR Copilot to GitHub..." -ForegroundColor Cy
 Write-Host "Repository: https://github.com/JEEVANPRANAVRAVIKUMAR/v2-HR-copilot" -ForegroundColor Cyan
 Write-Host "================================================" -ForegroundColor Cyan
 
-# Set remote origin
-git remote set-url origin https://github.com/JEEVANPRANAVRAVIKUMAR/v2-HR-copilot.git
+$repoUrl = "https://github.com/JEEVANPRANAVRAVIKUMAR/v2-HR-copilot.git"
+
+# Check if origin exists, set or add
+$existingRemote = git remote get-url origin 2>$null
+if ($existingRemote) {
+    git remote set-url origin $repoUrl
+} else {
+    git remote add origin $repoUrl
+}
 
 # Stage all files
 git add .
 
 # Commit changes
-git commit -m "feat: Enterprise HR Copilot v2.0 - 100% QA Benchmark, Multi-Agent DAG Planner, Resilient LLM Failover, and Executive PDF Reports"
+git commit -m "docs: enhanced enterprise README, multi-agent DAG architecture, and QA benchmark documentation"
 
 # Push to main branch
 git branch -M main
@@ -21,3 +28,4 @@ Write-Host "================================================" -ForegroundColor G
 Write-Host "✅ Repository successfully pushed to GitHub!" -ForegroundColor Green
 Write-Host "Link: https://github.com/JEEVANPRANAVRAVIKUMAR/v2-HR-copilot" -ForegroundColor Green
 Write-Host "================================================" -ForegroundColor Green
+
