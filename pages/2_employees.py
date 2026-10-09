@@ -162,7 +162,7 @@ with tab_create:
         with col6:
             new_type = st.selectbox("Employment Type *", ["Full Time", "Part Time", "Intern", "Contract"])
 
-        st.markdown("##### 📅 Timeline & Location")
+        st.markdown("##### 📅 Timeline, Location & Background")
         col7, col8, col9 = st.columns(3)
         with col7:
             from datetime import date
@@ -171,6 +171,12 @@ with tab_create:
             new_location = st.text_input("Work Location", placeholder="e.g. Chennai, Bangalore, Remote")
         with col9:
             new_phone = st.text_input("Phone Number", placeholder="e.g. +91 9876543210")
+
+        col10, col11 = st.columns(2)
+        with col10:
+            new_address = st.text_input("Full Address / Residence", placeholder="e.g. 123 Tech Park, Anna Nagar, Chennai")
+        with col11:
+            new_work_hist = st.text_input("Work History & Prior Experience", placeholder="e.g. 3 years as AI Specialist at GlobalTech")
 
         new_status = st.radio("Employment Status", ["Active", "Inactive"], horizontal=True)
 
@@ -191,7 +197,7 @@ with tab_create:
                     )
                     result = st.session_state.emp_service.create_employee(data)
 
-                    # Persist child credentials
+                    # Persist child credentials and work history
                     st.session_state.emp_service.save_employee_details(
                         emp_no_clean,
                         email=new_email.strip() if new_email else None,
@@ -202,6 +208,8 @@ with tab_create:
                         work_location=new_location.strip() if new_location else None,
                         department=new_dept,
                         position_title=new_position.strip() if new_position else None,
+                        full_address=new_address.strip() if new_address else None,
+                        work_history_note=new_work_hist.strip() if new_work_hist else None,
                     )
 
                     st.success(f"✅ Employee **{result.full_name}** (`{result.employee_no}`) created successfully with complete credentials!")

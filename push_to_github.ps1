@@ -18,7 +18,7 @@ if ($existingRemote) {
 git add .
 
 # Commit changes
-git commit -m "docs: enhanced enterprise README, multi-agent DAG architecture, and QA benchmark documentation"
+git commit -m "feat: enhance employee listing with joining dates and collect full work history during onboarding"
 
 # Push to main branch (force push to overwrite remote initial commit)
 git branch -M main

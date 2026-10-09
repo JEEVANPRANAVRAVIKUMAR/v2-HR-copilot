@@ -154,27 +154,12 @@ class EmployeeRepository(BaseRepository):
 
     def get_all(self) -> List[Employee]:
         """
-        Retrieve all employees.
+        Retrieve all employees with full joined attributes.
 
         Returns:
-            List of employees.
+            List of employees with complete credentials, department, and position info.
         """
-        try:
-            response = self._execute(
-                self.client
-                .table(EMPLOYEES_TABLE)
-                .select("*")
-                .order("employee_no")
-            )
-            if not self._has_data(response):
-                return []
-            return [
-                Employee.model_validate(row) for row in response.data
-            ]
-
-        except Exception as exc:
-            self.logger.exception("Failed fetching employees.")
-            raise RepositoryError("Unable to fetch employees.") from exc
+        return self.search()
 
     def search(
         self,
@@ -196,7 +181,14 @@ class EmployeeRepository(BaseRepository):
             List of matching employees.
         """
         try:
-            select_str = f"*,{POSITION_HISTORY_TABLE}(*,{DEPARTMENTS_TABLE}(*))"
+            select_str = (
+                f"*,"
+                f"{EMPLOYEE_PROFILES_TABLE}(*),"
+                f"{CONTACT_INFO_TABLE}(*),"
+                f"{ADDRESSES_TABLE}(*),"
+                f"{EMPLOYMENT_DETAILS_TABLE}(*),"
+                f"{POSITION_HISTORY_TABLE}(*,{DEPARTMENTS_TABLE}(*))"
+            )
             q = self.client.table(EMPLOYEES_TABLE).select(select_str)
 
             if is_active is not None:
@@ -214,11 +206,37 @@ class EmployeeRepository(BaseRepository):
 
             for raw_row in response.data:
                 row = dict(raw_row)
-                pos = row.get(POSITION_HISTORY_TABLE)
-                pos_list = [pos] if isinstance(pos, dict) else (pos if isinstance(pos, list) else [])
+
+                # 1. Contact info
+                contacts = row.get(CONTACT_INFO_TABLE) or row.get("contact_info")
+                if contacts:
+                    c = contacts[0] if isinstance(contacts, list) and len(contacts) > 0 else (contacts if isinstance(contacts, dict) else {})
+                    row["email"] = c.get("email")
+                    row["phone"] = c.get("phone")
+
+                # 2. Addresses
+                addresses = row.get(ADDRESSES_TABLE) or row.get("addresses")
+                if addresses:
+                    a = addresses[0] if isinstance(addresses, list) and len(addresses) > 0 else (addresses if isinstance(addresses, dict) else {})
+                    row["city"] = a.get("city")
+                    row["full_address"] = a.get("full_address")
+
+                # 3. Employment details
                 dept_name = None
                 pos_name = None
+                employments = row.get(EMPLOYMENT_DETAILS_TABLE) or row.get("employment_details")
+                if employments:
+                    e = employments[0] if isinstance(employments, list) and len(employments) > 0 else (employments if isinstance(employments, dict) else {})
+                    dept_name = e.get("department")
+                    pos_name = e.get("position_title")
+                    row["status"] = e.get("status")
+                    row["employment_type"] = e.get("employment_type")
+                    row["work_location"] = e.get("work_location")
+                    row["joining_date"] = e.get("joining_date")
 
+                # 4. Position history (overrides with latest if present)
+                pos = row.get(POSITION_HISTORY_TABLE)
+                pos_list = [pos] if isinstance(pos, dict) else (pos if isinstance(pos, list) else [])
                 if pos_list:
                     sorted_pos = sorted(
                         pos_list,
@@ -226,12 +244,18 @@ class EmployeeRepository(BaseRepository):
                         reverse=True,
                     )
                     latest = sorted_pos[0]
-                    depts = latest.get("departments") or latest.get(DEPARTMENTS_TABLE)
-                    dept_name = (
-                        depts.get("department_name") if isinstance(depts, dict)
-                        else (depts[0].get("department_name") if isinstance(depts, list) and len(depts) > 0 else latest.get("department"))
-                    )
-                    pos_name = latest.get("position_title")
+                    if latest.get("position_title"):
+                        pos_name = latest.get("position_title")
+                    
+                    pos_dept = latest.get("department")
+                    if not pos_dept:
+                        depts = latest.get("departments") or latest.get(DEPARTMENTS_TABLE)
+                        if isinstance(depts, dict):
+                            pos_dept = depts.get("department_name")
+                        elif isinstance(depts, list) and len(depts) > 0:
+                            pos_dept = depts[0].get("department_name")
+                    if pos_dept:
+                        dept_name = pos_dept
 
                 row["department"] = dept_name
                 row["position_title"] = pos_name
@@ -245,18 +269,24 @@ class EmployeeRepository(BaseRepository):
                     matched = (
                         clean_q in emp_no
                         or clean_q in name
-                        or no_space_q in name_no_space
+                        or (no_space_q and no_space_q in name_no_space)
                         or (q_words and any(w in name for w in q_words))
                     )
                     if not matched:
                         continue
 
+                # Filter by department
                 if department:
-                    if not dept_name or department.lower() not in str(dept_name).lower():
+                    d_filter = str(department).strip().lower()
+                    d_val = str(dept_name or "").strip().lower()
+                    if d_filter not in d_val and d_val not in d_filter:
                         continue
 
+                # Filter by position_title
                 if position_title:
-                    if not pos_name or position_title.lower() not in str(pos_name).lower():
+                    p_filter = str(position_title).strip().lower()
+                    p_val = str(pos_name or "").strip().lower()
+                    if p_filter not in p_val and p_val not in p_filter:
                         continue
 
                 results.append(Employee.model_validate(row))
@@ -565,3 +595,57 @@ class EmployeeRepository(BaseRepository):
                     self.client.table(POSITION_HISTORY_TABLE).insert(data).execute()
         except Exception as exc:
             self.logger.warning("Upsert position_history failed for %s: %s", employee_no, exc)
+
+    def upsert_address(
+        self,
+        employee_no: str,
+        city: str | None = None,
+        full_address: str | None = None,
+    ) -> None:
+        """Upsert address information for an employee."""
+        try:
+            data = {"employee_no": employee_no}
+            if city:
+                data["city"] = city
+            if full_address:
+                data["full_address"] = full_address
+            if len(data) > 1:
+                res = self.client.table(ADDRESSES_TABLE).select("*").eq("employee_no", employee_no).execute()
+                if self._has_data(res):
+                    self.client.table(ADDRESSES_TABLE).update(data).eq("employee_no", employee_no).execute()
+                else:
+                    self.client.table(ADDRESSES_TABLE).insert(data).execute()
+        except Exception as exc:
+            self.logger.warning("Upsert addresses failed for %s: %s", employee_no, exc)
+
+    def upsert_profile(
+        self,
+        employee_no: str,
+        dob: str | None = None,
+        gender: str | None = None,
+        nationality: str | None = None,
+        marital_status: str | None = None,
+        blood_group: str | None = None,
+    ) -> None:
+        """Upsert profile metadata for an employee."""
+        try:
+            data = {"employee_no": employee_no}
+            if dob:
+                data["dob"] = dob
+            if gender:
+                data["gender"] = gender
+            if nationality:
+                data["nationality"] = nationality
+            if marital_status:
+                data["marital_status"] = marital_status
+            if blood_group:
+                data["blood_group"] = blood_group
+            if len(data) > 1:
+                res = self.client.table(EMPLOYEE_PROFILES_TABLE).select("*").eq("employee_no", employee_no).execute()
+                if self._has_data(res):
+                    self.client.table(EMPLOYEE_PROFILES_TABLE).update(data).eq("employee_no", employee_no).execute()
+                else:
+                    self.client.table(EMPLOYEE_PROFILES_TABLE).insert(data).execute()
+        except Exception as exc:
+            self.logger.warning("Upsert employee_profiles failed for %s: %s", employee_no, exc)
+

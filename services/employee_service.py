@@ -426,9 +426,17 @@ class EmployeeService:
         work_location: str | None = None,
         department: str | None = None,
         position_title: str | None = None,
+        city: str | None = None,
+        full_address: str | None = None,
+        dob: str | None = None,
+        gender: str | None = None,
+        nationality: str | None = None,
+        marital_status: str | None = None,
+        blood_group: str | None = None,
+        work_history_note: str | None = None,
     ) -> None:
         """
-        Persist detailed employee metadata (contact info, employment details, position).
+        Persist detailed employee metadata (contact info, employment details, position, address, profile, and work history).
         """
         if email or phone:
             self._repo.upsert_contact_info(employee_no, email=email, phone=phone)
@@ -447,6 +455,27 @@ class EmployeeService:
                 department_name=department,
                 start_date=joining_date,
             )
+        if city or full_address:
+            self._repo.upsert_address(employee_no, city=city, full_address=full_address)
+        if any([dob, gender, nationality, marital_status, blood_group]):
+            self._repo.upsert_profile(
+                employee_no,
+                dob=dob,
+                gender=gender,
+                nationality=nationality,
+                marital_status=marital_status,
+                blood_group=blood_group,
+            )
+        if work_history_note:
+            emp = self._repo.get_by_employee_no(employee_no)
+            if emp:
+                self._record_event(
+                    emp,
+                    HistoryEventType.HIRED,
+                    to_value=position_title or "Employee",
+                    field="work_history",
+                    note=work_history_note,
+                )
 
     # ----------------------------------------------------------------
     # Status transitions

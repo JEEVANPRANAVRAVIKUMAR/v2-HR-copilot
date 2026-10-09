@@ -115,26 +115,24 @@ class SqlAgent:
                         dept_match = d
                         break
 
-                if dept_match or "department" in q_low:
-                    all_emps = self._emp_repo.search(department=dept_match)
-                    if all_emps:
-                        rows = [
-                            {
-                                "employee_no": e.employee_no,
-                                "full_name": e.full_name,
-                                "department": e.department,
-                                "position_title": e.position_title,
-                                "is_active": e.is_active,
-                                "email": e.email,
-                                "work_location": e.work_location,
-                            }
-                            for e in all_emps
-                        ]
-                    else:
-                        dept_rows = self._analytics_repo.headcount_by_department()
-                        rows = dept_rows if dept_rows else []
-                elif any(r in q_low for r in ["manager", "lead", "developer", "engineer", "scientist", "analyst"]):
-                    all_emps = self._emp_repo.search()
+                role_match = None
+                for r in ["manager", "lead", "director", "developer", "engineer", "scientist", "analyst", "specialist", "intern"]:
+                    if re.search(rf"\b{r}\b", q_low):
+                        role_match = r
+                        break
+
+                active_filter = None
+                if "inactive" in q_low:
+                    active_filter = False
+                elif "active" in q_low:
+                    active_filter = True
+
+                if dept_match or role_match or active_filter is not None:
+                    matched_emps = self._emp_repo.search(
+                        department=dept_match,
+                        position_title=role_match,
+                        is_active=active_filter,
+                    )
                     rows = [
                         {
                             "employee_no": e.employee_no,
@@ -142,8 +140,11 @@ class SqlAgent:
                             "department": e.department,
                             "position_title": e.position_title,
                             "is_active": e.is_active,
+                            "email": e.email,
+                            "work_location": e.work_location,
+                            "joining_date": e.joining_date,
                         }
-                        for e in all_emps
+                        for e in matched_emps
                     ]
                 else:
                     all_emps = self._emp_repo.search()
@@ -154,6 +155,7 @@ class SqlAgent:
                             "department": e.department,
                             "position_title": e.position_title,
                             "is_active": e.is_active,
+                            "email": e.email,
                         }
                         for e in all_emps[:20]
                     ]

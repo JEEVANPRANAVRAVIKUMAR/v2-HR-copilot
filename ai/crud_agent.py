@@ -41,20 +41,25 @@ The user's request has been classified as a CRUD operation.
 Extract as many of the following fields as you can from the user's message and prior conversation:
 - operation: one of "create", "update", "activate", "deactivate", "lookup", "list", "search"
   * Use "create" when adding a new employee.
-  * Use "update" when modifying or adding additional info (contact, employment type, joining date, department, etc.) to an employee.
-  * Use "list" when the user asks to see/show/list ALL employees (or "everyone").
+  * Use "update" when modifying or adding additional info (contact, employment type, joining date, department, work history, etc.) to an employee.
+  * Use "list" when the user asks to see/show/list ALL employees (or "everyone", "show joining date of all employees").
   * Use "lookup" when the user asks about ONE specific employee by number or name.
   * Use "search" when the user wants to find employees matching criteria.
 - employee_no: the employee number if mentioned (e.g. EMP1776) or referenced in previous context
 - full_name: the employee's full name
 - is_active: whether they should be active (true/false)
-- department: the department name (e.g. AI, Engineering, HR)
-- position_title: the job/position title (e.g. Intern, Data Scientist)
+- department: the department name (e.g. AI, Engineering, HR, Finance)
+- position_title: the job/position title (e.g. Intern, Data Scientist, Manager)
 - email: email address (e.g. name@example.com)
 - phone: phone number
 - employment_type: Full Time, Part Time, Intern, Contract
 - joining_date: joining date (e.g. YYYY-MM-DD or DD/MM/YYYY)
 - work_location: office/city location
+- address: full residential or city address
+- work_history: work experience, prior role history, or background notes
+- dob: date of birth (e.g. YYYY-MM-DD)
+- gender: Male, Female, Other
+- marital_status: Single, Married, etc.
 - status: Active, Inactive, On Leave
 
 Respond with a JSON object:
@@ -66,7 +71,7 @@ Respond with a JSON object:
   "ready_to_confirm": true/false
 }
 
-If the user is continuing a previous turn to add details (e.g. giving contact info, joining date, or employment type), use operation "update" and keep the employee_no from context if not stated.
+If the user is continuing a previous turn to add details (e.g. giving contact info, joining date, department, address, or work history), use operation "update" and keep the employee_no from context if not stated.
 """
 
 
@@ -152,7 +157,7 @@ class CrudAgent:
                 operation = "list"
 
             if operation == "lookup":
-                return self._handle_lookup(parsed)
+                return self._handle_lookup(parsed, raw_message=message)
 
             if operation == "list":
                 return self._handle_list()
@@ -261,40 +266,29 @@ class CrudAgent:
             fields["employment_type"] = type_match.group(1).strip()
 
         # Department
-        dept_match = re.search(r'department[:\s]+([\w\s]+?)(?:position|status|type|joining|contact|$)', msg, re.IGNORECASE)
-        if dept_match:
-            fields["department"] = dept_match.group(1).strip()
+        for d in ["ai", "engineering", "sales", "hr", "marketing", "finance", "operations", "product"]:
+            if re.search(rf"\b{d}\b", msg, re.IGNORECASE):
+                fields["department"] = d.upper() if len(d) <= 2 else d.title()
+                break
 
         # Position title
-        pos_match = re.search(r'position(?: title)?[:\s]+([\w\s]+?)(?:department|status|type|joining|contact|$)', msg, re.IGNORECASE)
-        if pos_match:
-            fields["position_title"] = pos_match.group(1).strip()
-
-        # Employee No
-        emp_match = re.search(r'\b(emp\d+)\b', msg, re.IGNORECASE)
-        if emp_match:
-            fields["employee_no"] = emp_match.group(1).upper()
-
-        # Full Name
-        name_match = re.search(r'(?:fullname|full name|name)[:\s]+([\w\s]+?)(?:status|department|position|employee|type|$)', msg, re.IGNORECASE)
-        if name_match:
-            fields["full_name"] = name_match.group(1).strip()
-
-        # Status
-        status_match = re.search(r'status[:\s]+(\w+)', msg, re.IGNORECASE)
-        if status_match:
-            fields["status"] = status_match.group(1).capitalize()
-            fields["is_active"] = fields["status"].lower() not in ("inactive", "terminated", "false", "0")
+        for r in ["manager", "lead", "director", "developer", "engineer", "scientist", "analyst", "specialist", "intern"]:
+            if re.search(rf"\b{r}\b", msg, re.IGNORECASE):
+                fields["position_title"] = r.title()
+                break
 
         # Decide operation
         if fields.get("full_name") and fields.get("employee_no"):
             return {"operation": "create", "fields": fields, "missing_fields": [], "ready_to_confirm": True}
 
-        if any(k in fields for k in ["email", "phone", "joining_date", "employment_type", "department", "position_title"]):
+        if any(k in fields for k in ["email", "phone", "joining_date", "employment_type"]):
             return {"operation": "update", "fields": fields, "missing_fields": [], "ready_to_confirm": True}
 
+        if fields.get("department") or fields.get("position_title"):
+            return {"operation": "search", "fields": fields, "missing_fields": [], "ready_to_confirm": False}
+
         msg_l = msg.lower()
-        if any(k in msg_l for k in ["all", "everyone", "list", "show everyone"]):
+        if any(k in msg_l for k in ["everyone", "all employees", "list all", "show everyone"]) or msg_l.strip() in ("list", "all", "show all"):
             return {"operation": "list", "fields": {}, "missing_fields": [], "ready_to_confirm": False}
 
         if fields.get("employee_no"):
@@ -332,7 +326,7 @@ class CrudAgent:
         for candidate in candidates[:3]:
             results = self._employee_service.search_employees(query=candidate)
             if results:
-                return self._handle_lookup({"fields": {"full_name": candidate}})
+                return self._handle_lookup({"fields": {"full_name": candidate}}, raw_message=message)
         return None
 
     def _format_full_profile(self, employee_no: str) -> str:
@@ -384,14 +378,85 @@ class CrudAgent:
             f"{history_str}"
         )
 
+    def _format_employee_response(self, emp: Any, message: str = "") -> str:
+        """Format an employee result, either as a targeted single-attribute answer or a full dossier."""
+        msg_low = message.lower()
+        full_name = getattr(emp, "full_name", "Employee")
+        emp_no = getattr(emp, "employee_no", "")
+
+        # 1. Address / Living Location
+        if any(k in msg_low for k in ["address", "residential", "residence", "where does", "live"]):
+            addr = getattr(emp, "full_address", None) or getattr(emp, "city", None)
+            if addr:
+                return f"📍 The address for **{full_name}** (`{emp_no}`) is: **{addr}**"
+            return f"No address is on record for **{full_name}** (`{emp_no}`)."
+
+        # 2. Email Address
+        if any(k in msg_low for k in ["email", "mail", "email address", "email id"]):
+            email = getattr(emp, "email", None)
+            if email:
+                return f"📧 The email address for **{full_name}** (`{emp_no}`) is: `{email}`"
+            return f"No email address is on record for **{full_name}** (`{emp_no}`)."
+
+        # 3. Phone / Mobile Number
+        if any(k in msg_low for k in ["phone", "mobile", "contact number", "call", "cell", "phone number"]):
+            phone = getattr(emp, "phone", None)
+            if phone:
+                return f"📞 The contact phone number for **{full_name}** (`{emp_no}`) is: `{phone}`"
+            return f"No phone number is on record for **{full_name}** (`{emp_no}`)."
+
+        # 4. Joining Date / Hire Date
+        if any(k in msg_low for k in ["joining date", "joined", "join date", "start date", "hire date", "hired on", "when did"]):
+            joining_date = getattr(emp, "joining_date", None)
+            if joining_date:
+                return f"🗓️ **{full_name}** (`{emp_no}`) joined the company on **{joining_date}**."
+            return f"No joining date is recorded for **{full_name}** (`{emp_no}`)."
+
+        # 5. Department
+        if any(k in msg_low for k in ["which department", "what department", "dept of", "department of", "department is"]):
+            dept = getattr(emp, "department", None)
+            if dept:
+                return f"🏢 **{full_name}** (`{emp_no}`) belongs to the **{dept}** department."
+            return f"No department is assigned for **{full_name}** (`{emp_no}`)."
+
+        # 6. Position / Role / Designation
+        if any(k in msg_low for k in ["position of", "role of", "job title", "title of", "what is the role", "designation of"]):
+            pos = getattr(emp, "position_title", None)
+            dept = getattr(emp, "department", "")
+            dept_str = f" in {dept}" if dept else ""
+            if pos:
+                return f"💼 **{full_name}** (`{emp_no}`) holds the position of **{pos}**{dept_str}."
+            return f"No position title is recorded for **{full_name}** (`{emp_no}`)."
+
+        # 7. DOB / Date of Birth / Birthday
+        if any(k in msg_low for k in ["dob", "date of birth", "birthday", "birth date", "born"]):
+            dob = getattr(emp, "dob", None)
+            if dob:
+                return f"🎂 The date of birth for **{full_name}** (`{emp_no}`) is **{dob}**."
+            return f"No date of birth is on record for **{full_name}** (`{emp_no}`)."
+
+        # 8. Status
+        if any(k in msg_low for k in ["is active", "active status", "status of", "is working", "still with"]):
+            is_active = getattr(emp, "is_active", True)
+            status = getattr(emp, "status", None)
+            status_text = "Active" if is_active else "Inactive"
+            extra = f" (`{status}`)" if status else ""
+            return f"⚡ **{full_name}** (`{emp_no}`) is currently **{status_text}**{extra}."
+
+        # Default: Full 360-degree Dossier
+        return self._format_full_profile(emp_no)
+
     def _handle_lookup(
-        self, parsed: Dict[str, Any],
+        self, parsed: Dict[str, Any], raw_message: str = "",
     ) -> str:
         fields = parsed.get("fields", {}) or {}
         employee_no = fields.get("employee_no")
         full_name = fields.get("full_name")
 
         if employee_no:
+            emp = self._employee_service.get_full_profile(employee_no)
+            if emp:
+                return self._format_employee_response(emp, message=raw_message)
             return self._format_full_profile(employee_no)
 
         if full_name:
@@ -400,35 +465,59 @@ class CrudAgent:
             )
             if results:
                 if len(results) == 1:
+                    emp = self._employee_service.get_full_profile(results[0].employee_no)
+                    if emp:
+                        return self._format_employee_response(emp, message=raw_message)
                     return self._format_full_profile(results[0].employee_no)
                 lines = [
-                    f"- **{e.full_name}** ({e.employee_no}) — "
-                    f"{'Active' if e.is_active else 'Inactive'}"
+                    f"- **{e.full_name}** (`{e.employee_no}`) — {e.position_title or 'N/A'} ({e.department or 'N/A'})"
                     for e in results[:5]
                 ]
-                return "Found multiple matching employees:\n" + "\n".join(lines) + "\n\nPlease specify the employee number to see their full profile."
+                return "Found multiple matching employees:\n" + "\n".join(lines) + "\n\nPlease specify the employee number to view details."
             return f"No employees found matching '{full_name}'."
 
         return (
             "Please provide an employee number or name to look up."
         )
 
-    def _handle_list(self) -> str:
+    def _handle_list(self, raw_message: str = "") -> str:
         employees = self._employee_service.list_all_employees()
         if not employees:
             return "No employees found in the system."
-        lines = [
-            f"- **{e.full_name}** ({e.employee_no}) — "
-            f"{'Active' if e.is_active else 'Inactive'}"
-            for e in employees[:20]
-        ]
-        header = f"Showing {len(lines)} of {len(employees)} employees:\n"
-        if len(employees) > 20:
-            header += "(first 20 shown)\n"
+        
+        msg_low = raw_message.lower()
+        show_joining = any(k in msg_low for k in ["joining", "join date", "joined", "hire date", "start date", "when did"])
+        show_email = any(k in msg_low for k in ["email", "mail"])
+        show_phone = any(k in msg_low for k in ["phone", "mobile", "contact"])
+        show_location = any(k in msg_low for k in ["location", "city", "office", "address", "where"])
+
+        lines = []
+        for e in employees:
+            name = e.full_name
+            emp_no = e.employee_no
+            status = "Active" if e.is_active else "Inactive"
+            dept = e.department or "N/A"
+            pos = e.position_title or "Role N/A"
+            joining = e.joining_date or "N/A"
+            
+            if show_joining:
+                detail = f"Joined: **{joining}** — {pos} ({dept}) — {status}"
+            elif show_email:
+                detail = f"Email: `{e.email or 'N/A'}` — {pos} ({dept})"
+            elif show_phone:
+                detail = f"Phone: `{e.phone or 'N/A'}` — {dept}"
+            elif show_location:
+                detail = f"Location: **{e.work_location or e.city or 'N/A'}** — {dept}"
+            else:
+                detail = f"**{pos}** — {dept} — Joined: {joining} — {status}"
+            
+            lines.append(f"• **{name}** (`{emp_no}`) — {detail}")
+
+        header = f"### 📋 Employee Directory ({len(employees)} total):\n\n"
         return header + "\n".join(lines)
 
     def _handle_search(
-        self, parsed: Dict[str, Any],
+        self, parsed: Dict[str, Any], raw_message: str = "",
     ) -> str:
         fields = parsed.get("fields", {}) or {}
         full_name = fields.get("full_name")
@@ -439,7 +528,7 @@ class CrudAgent:
             is_active = is_active.lower() not in ("false", "no", "0", "inactive")
 
         if not any([full_name, department, position_title, is_active is not None]):
-            return self._handle_list()
+            return self._handle_list(raw_message=raw_message)
 
         results = self._employee_service.search_employees(
             query=full_name,
@@ -450,13 +539,11 @@ class CrudAgent:
         if not results:
             return "No employees matched those criteria."
         lines = [
-            f"- **{e.full_name}** ({e.employee_no}) — "
+            f"• **{e.full_name}** (`{e.employee_no}`) — {e.position_title or 'Role N/A'} ({e.department or 'Dept N/A'}) — Joined: {e.joining_date or 'N/A'} — "
             f"{'Active' if e.is_active else 'Inactive'}"
             for e in results[:20]
         ]
-        header = f"Found {len(lines)} of {len(results)} matches:\n"
-        if len(results) > 20:
-            header += "(first 20 shown)\n"
+        header = f"Found {len(results)} matching record(s):\n\n"
         return header + "\n".join(lines)
 
     def _handle_status_change(
@@ -499,9 +586,9 @@ class CrudAgent:
             if "full_name" not in fields:
                 missing_fields.append("the employee's full name")
             if "employee_no" not in fields:
-                missing_fields.append("an employee number")
+                missing_fields.append("an employee number (e.g. EMP105)")
             return (
-                "I still need " + " and ".join(missing_fields) + ". "
+                "I still need " + " and ".join(missing_fields) + " to create the employee record. "
                 "Please provide them."
             )
 
@@ -512,7 +599,8 @@ class CrudAgent:
         )
         result = self._employee_service.create_employee(data)
 
-        # Save optional metadata
+        # Save optional metadata, profile, and work history
+        work_hist = fields.get("work_history") or fields.get("history") or fields.get("note")
         self._employee_service.save_employee_details(
             result.employee_no,
             email=fields.get("email"),
@@ -523,13 +611,13 @@ class CrudAgent:
             work_location=fields.get("work_location"),
             department=fields.get("department"),
             position_title=fields.get("position_title"),
+            city=fields.get("city"),
+            full_address=fields.get("address"),
+            dob=fields.get("dob"),
+            gender=fields.get("gender"),
+            marital_status=fields.get("marital_status"),
+            work_history_note=work_hist,
         )
-
-        details = []
-        if fields.get("department"):
-            details.append(f"Department: `{fields['department']}`")
-        if fields.get("position_title"):
-            details.append(f"Position: `{fields['position_title']}`")
 
         has_credentials = any([
             fields.get("email"),
@@ -537,17 +625,20 @@ class CrudAgent:
             fields.get("position_title"),
             fields.get("employment_type"),
             fields.get("joining_date"),
+            work_hist,
         ])
 
         if has_credentials:
             saved_items = []
             if fields.get("department"): saved_items.append(f"- **Department:** `{fields['department']}`")
             if fields.get("position_title"): saved_items.append(f"- **Position Title:** `{fields['position_title']}`")
+            if fields.get("joining_date"): saved_items.append(f"- **Joining Date:** `{fields['joining_date']}`")
+            if fields.get("employment_type"): saved_items.append(f"- **Employment Type:** `{fields['employment_type']}`")
             if fields.get("email"): saved_items.append(f"- **Email:** `{fields['email']}`")
             if fields.get("phone"): saved_items.append(f"- **Phone:** `{fields['phone']}`")
-            if fields.get("employment_type"): saved_items.append(f"- **Employment Type:** `{fields['employment_type']}`")
-            if fields.get("joining_date"): saved_items.append(f"- **Joining Date:** `{fields['joining_date']}`")
             if fields.get("work_location"): saved_items.append(f"- **Work Location:** `{fields['work_location']}`")
+            if fields.get("address"): saved_items.append(f"- **Address:** `{fields['address']}`")
+            if work_hist: saved_items.append(f"- **Work History / Background:** {work_hist}")
 
             items_str = "\n".join(saved_items)
             return (
@@ -555,18 +646,20 @@ class CrudAgent:
                 f"### 👤 {result.full_name} (`{result.employee_no}`)\n"
                 f"- **Status:** `{'Active' if result.is_active else 'Inactive'}`\n"
                 f"{items_str}\n\n"
-                "All employee records and credentials have been saved to the database."
+                "All employee records, credentials, and work history have been saved to the database."
             )
         else:
             return (
                 f"✅ Employee **{result.full_name}** (`{result.employee_no}`) created in the directory.\n\n"
-                "⚠️ **Please provide the employee credentials and role details to complete onboarding:**\n"
+                "📋 **Please provide the employee's work history, role, and credential details to complete onboarding:**\n"
+                "- 🏢 **Department** (e.g. `department: AI` or `Engineering`)\n"
+                "- 💼 **Position Title** (e.g. `position: Senior Data Scientist`)\n"
+                "- 📅 **Joining Date** (e.g. `joining date: 2026-10-09` or `YYYY-MM-DD`)\n"
+                "- 📋 **Employment Type** (e.g. `type: Full Time` / `Contract` / `Intern`)\n"
+                "- 📜 **Work History & Experience** (e.g. `history: 3 years as ML Engineer at ABC Corp`)\n"
                 "- 📧 **Email Address** (e.g. `email: name@company.com`)\n"
-                "- 🏢 **Department** (e.g. `department: AI`)\n"
-                "- 💼 **Position Title** (e.g. `position: Intern`)\n"
-                "- 📅 **Joining Date** (e.g. `joining date: 2026-10-09` or `DD/MM/YYYY`)\n"
-                "- 📋 **Employment Type** (e.g. `type: Full Time` / `Intern`)\n"
-                "- 📞 **Phone Number** (optional)\n\n"
+                "- 📞 **Phone Number** (optional)\n"
+                "- 📍 **Address / Location** (optional)\n\n"
                 "_You can reply directly with these details in one message._"
             )
 
@@ -603,7 +696,8 @@ class CrudAgent:
                 employee_no, EmployeeUpdate(full_name=fields["full_name"]),
             )
 
-        # 2. Persist child tables (contact info, employment details, position)
+        # 2. Persist child tables (contact info, employment details, position, address, profile, work history)
+        work_hist = fields.get("work_history") or fields.get("history") or fields.get("note")
         self._employee_service.save_employee_details(
             employee_no,
             email=fields.get("email"),
@@ -614,17 +708,28 @@ class CrudAgent:
             work_location=fields.get("work_location"),
             department=fields.get("department"),
             position_title=fields.get("position_title"),
+            city=fields.get("city"),
+            full_address=fields.get("address"),
+            dob=fields.get("dob"),
+            gender=fields.get("gender"),
+            marital_status=fields.get("marital_status"),
+            work_history_note=work_hist,
         )
 
-        saved_items = []
-        for k in ["department", "position_title", "email", "phone", "employment_type", "joining_date", "work_location", "status"]:
-            if k in fields and fields[k]:
-                saved_items.append(f"- **{k.replace('_', ' ').title()}:** `{fields[k]}`")
+        saved = []
+        if fields.get("department"): saved.append(f"- **Department:** `{fields['department']}`")
+        if fields.get("position_title"): saved.append(f"- **Position Title:** `{fields['position_title']}`")
+        if fields.get("joining_date"): saved.append(f"- **Joining Date:** `{fields['joining_date']}`")
+        if fields.get("employment_type"): saved.append(f"- **Employment Type:** `{fields['employment_type']}`")
+        if fields.get("email"): saved.append(f"- **Email:** `{fields['email']}`")
+        if fields.get("phone"): saved.append(f"- **Phone:** `{fields['phone']}`")
+        if fields.get("address"): saved.append(f"- **Address:** `{fields['address']}`")
+        if work_hist: saved.append(f"- **Work History / Background:** {work_hist}")
 
-        items_str = "\n".join(saved_items) if saved_items else "- Updated employee record"
+        items_str = "\n".join(saved) if saved else "- Updated employee record"
         return (
-            f"✅ **Employee Credentials Saved Successfully!**\n\n"
+            f"✅ **Employee Details Updated Successfully!**\n\n"
             f"### 👤 Profile Summary for `{employee_no}`\n"
             f"{items_str}\n\n"
-            "All credentials and employment details have been saved to the database."
+            "All credentials, employment details, and work history have been saved to the database."
         )

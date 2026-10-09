@@ -198,6 +198,12 @@ Query Rules:
                     flat["department_name"] = dept_val
                     flat["department"] = dept_val
 
+        # Fallbacks for department / position
+        if not flat.get("department") and flat.get("department_name"):
+            flat["department"] = flat["department_name"]
+        if not flat.get("department_name") and flat.get("department"):
+            flat["department_name"] = flat["department"]
+
         return flat
 
     def _execute_translated(self, sql: str) -> List[Dict[str, Any]]:
@@ -221,6 +227,7 @@ Query Rules:
             or "employee_no" in cleaned.lower()
             or "full_name" in cleaned.lower()
             or "position_title" in cleaned.lower()
+            or "department" in cleaned.lower()
             or "city" in cleaned.lower()
         )
 
@@ -280,26 +287,40 @@ Query Rules:
         if not rows:
             return rows
 
-        where_clause = re.search(r"WHERE\s+(.+?)(?:GROUP\s+BY|ORDER\s+BY|LIMIT|;$)", sql, re.IGNORECASE | re.DOTALL)
+        where_clause = re.search(
+            r"\bWHERE\s+(.+?)(?:\s+GROUP\s+BY|\s+ORDER\s+BY|\s+LIMIT|\s*;\s*$|\Z)",
+            sql,
+            re.IGNORECASE | re.DOTALL,
+        )
         if not where_clause:
             return rows
 
         where_text = where_clause.group(1).strip().rstrip(";").rstrip(")").strip()
-        filtered = rows
+        filtered = list(rows)
 
         def _get_val(row_dict: dict, col: str):
             col_l = col.lower()
+            # Direct match
             if col_l in row_dict:
                 return row_dict[col_l]
-            # Try matching without prefixes or alias
+            # Aliases
+            if col_l in ("department_name", "department", "dept"):
+                return row_dict.get("department") or row_dict.get("department_name") or row_dict.get("dept")
+            if col_l in ("position_title", "title", "position", "job_title"):
+                return row_dict.get("position_title") or row_dict.get("title") or row_dict.get("position")
+            if col_l in ("full_name", "name", "employee_name"):
+                return row_dict.get("full_name") or row_dict.get("name")
+            if col_l in ("employee_no", "emp_no", "id"):
+                return row_dict.get("employee_no") or row_dict.get("emp_no") or row_dict.get("id")
+            # Suffix match
             for k, v in row_dict.items():
                 if k.lower() == col_l or k.lower().endswith(f"_{col_l}"):
                     return v
             return None
 
-        # 1. Parse simple equals (=) conditions (e.g. d.department_name = 'AI' or is_active = true)
+        # 1. Parse simple equals (=) conditions
         for eq_match in re.finditer(
-            r"(?:(\w+)\.)?(\w+)\s*=\s*(?:['\"]([^'\"]+)['\"]|([^\s'\")]+))",
+            r"(?:LOWER\s*\(\s*)?(?:(\w+)\.)?(\w+)(?:\s*\))?\s*=\s*(?:LOWER\s*\(\s*)?(?:['\"]([^'\"]+)['\"]|([^\s'\")]+))(?:\s*\))?",
             where_text, re.IGNORECASE,
         ):
             column = eq_match.group(2).lower()
@@ -307,7 +328,6 @@ Query Rules:
             val_unquoted = eq_match.group(4)
             value = (val_quoted or val_unquoted or "").strip()
 
-            # If unquoted value looks like a column/table join reference (e.g. d.id, position_history.employee_no), skip it
             if val_unquoted and ("." in val_unquoted or val_unquoted.lower() in ("id", "employee_no", "department_id")):
                 continue
 
@@ -318,11 +338,12 @@ Query Rules:
                 filtered = [
                     r for r in filtered
                     if str(_get_val(r, column) or "").strip().lower() == value.lower()
+                    or (column in ("department", "department_name") and value.lower() in str(_get_val(r, column) or "").strip().lower())
                 ]
 
         # 2. Parse ILIKE / LIKE conditions (e.g. ph.position_title ILIKE '%Manager%')
         for like_match in re.finditer(
-            r"(?:(\w+)\.)?(\w+)\s+(?:ILIKE|LIKE)\s+['\"]%?([^%'\"]+)%?['\"]",
+            r"(?:LOWER\s*\(\s*)?(?:(\w+)\.)?(\w+)(?:\s*\))?\s+(?:ILIKE|LIKE)\s+['\"]%?([^%'\"]+)%?['\"]",
             where_text, re.IGNORECASE,
         ):
             column = like_match.group(2).lower()
@@ -383,8 +404,6 @@ Query Rules:
                     if operator == "<=": return num <= lim_num
                 except (ValueError, TypeError):
                     # Fallback to ISO string / date comparison
-                    l_val = limit_str[:len(r_str)]
-                    r_val = r_str[:len(limit_str)]
                     if operator == ">": return r_str > limit_str
                     if operator == "<": return r_str < limit_str
                     if operator == ">=": return r_str >= limit_str
@@ -418,7 +437,7 @@ Query Rules:
         Handle GROUP BY + COUNT in Python.
         """
         group_match = re.search(
-            r"GROUP\s+BY\s+(.+?)(?:ORDER\s+BY|LIMIT|;$)",
+            r"\bGROUP\s+BY\s+(.+?)(?:\s+ORDER\s+BY|\s+LIMIT|\s*;\s*$|\Z)",
             sql, re.IGNORECASE | re.DOTALL,
         )
         if not group_match:
@@ -459,7 +478,7 @@ Query Rules:
         Apply ORDER BY and LIMIT in Python.
         """
         order_match = re.search(
-            r"ORDER\s+BY\s+(\w+(?:\.\w+)?)\s*(DESC|ASC)?",
+            r"\bORDER\s+BY\s+(\w+(?:\.\w+)?)\s*(DESC|ASC)?",
             sql, re.IGNORECASE,
         )
         if order_match and rows:
@@ -470,7 +489,7 @@ Query Rules:
             except Exception:
                 pass
 
-        limit_match = re.search(r"LIMIT\s+(\d+)", sql, re.IGNORECASE)
+        limit_match = re.search(r"\bLIMIT\s+(\d+)", sql, re.IGNORECASE)
         if limit_match and rows:
             limit = int(limit_match.group(1))
             rows = rows[:limit]
