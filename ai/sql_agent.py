@@ -156,8 +156,11 @@ class SqlAgent:
                             "position_title": e.position_title,
                             "is_active": e.is_active,
                             "email": e.email,
+                            "joining_date": e.joining_date,
+                            "work_location": e.work_location,
+                            "employment_type": e.employment_type,
                         }
-                        for e in all_emps[:20]
+                        for e in all_emps
                     ]
 
             try:

@@ -136,8 +136,19 @@ class CrudAgent:
         op = "crud_agent.process"
 
         try:
+            # Handle direct greetings cleanly
+            clean_msg = message.strip().lower().rstrip("!?. ")
+            if clean_msg in {"hi", "hello", "hey", "hola", "namaste", "greetings", "good morning", "good afternoon", "good evening"}:
+                return (
+                    "👋 **Hello! I'm your Enterprise HR AI Assistant.**\n\n"
+                    "How can I help you today? You can ask me to:\n"
+                    "• Look up employee details (e.g. *'Who is Rahul Sharma'*, *'Details of EMP0100'*)\n"
+                    "• View department & workforce info (e.g. *'Show joining date of all employees'*)\n"
+                    "• Run analytics, career timelines, skill gaps, or team building"
+                )
+
             parsed = self._parse_message(message, context=context)
-            operation = parsed.get("operation", "").strip().lower()
+            operation = str(parsed.get("operation") or "").strip().lower()
             fields = parsed.get("fields", {}) or {}
 
             # Normalize operations the LLM may use that aren't in the enum
@@ -160,10 +171,10 @@ class CrudAgent:
                 return self._handle_lookup(parsed, raw_message=message)
 
             if operation == "list":
-                return self._handle_list()
+                return self._handle_list(raw_message=message)
 
             if operation == "search":
-                return self._handle_search(parsed)
+                return self._handle_search(parsed, raw_message=message)
 
             if operation in ("activate", "deactivate"):
                 return self._handle_status_change(parsed, operation)
@@ -186,10 +197,15 @@ class CrudAgent:
                 "%s | operation=%s | %.1fms | OK",
                 op, operation, duration_ms,
             )
+            if operation and operation not in ("unknown", "none", "null"):
+                return (
+                    f"I understood you want to {operation} an employee, "
+                    "but I need more details. Can you provide the "
+                    "employee number or name?"
+                )
             return (
-                f"I understood you want to {operation} an employee, "
-                "but I need more details. Can you provide the "
-                "employee number or name?"
+                "I couldn't identify the employee or operation from your request. "
+                "Please provide an employee number (e.g. `EMP001`) or full name."
             )
 
         except (EmployeeNotFoundError, ServiceError):

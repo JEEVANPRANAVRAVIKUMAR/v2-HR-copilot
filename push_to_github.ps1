@@ -18,7 +18,7 @@ if ($existingRemote) {
 git add .
 
 # Commit changes
-git commit -m "feat: enhance employee listing with joining dates and collect full work history during onboarding"
+git commit -m "fix: greeting crash, precision name search matching, conversational pronoun follow-ups, and full work history collection"
 
 # Push to main branch (force push to overwrite remote initial commit)
 git branch -M main

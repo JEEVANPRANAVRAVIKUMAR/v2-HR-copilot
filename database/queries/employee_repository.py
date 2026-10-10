@@ -7,6 +7,7 @@ Handles all employee-related database operations.
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from typing import Any, List
 
 from core.constants import (
@@ -122,35 +123,7 @@ class EmployeeRepository(BaseRepository):
         Returns:
             List of matching employees.
         """
-        try:
-            clean_name = str(name).strip()
-            no_space_name = clean_name.replace(" ", "")
-            filters = [f"full_name.ilike.%{clean_name}%"]
-            if no_space_name != clean_name:
-                filters.append(f"full_name.ilike.%{no_space_name}%")
-            
-            response = self._execute(
-                self.client
-                .table(EMPLOYEES_TABLE)
-                .select("*")
-                .or_(",".join(filters))
-            )
-            if not self._has_data(response):
-                # In-memory fallback
-                all_res = self._execute(self.client.table(EMPLOYEES_TABLE).select("*"))
-                if self._has_data(all_res):
-                    return [
-                        Employee.model_validate(r) for r in all_res.data
-                        if no_space_name.lower() in str(r.get("full_name", "")).replace(" ", "").lower()
-                    ]
-                return []
-            return [
-                Employee.model_validate(row) for row in response.data
-            ]
-
-        except Exception as exc:
-            self.logger.exception("Employee name search failed.")
-            raise RepositoryError("Unable to search employees.") from exc
+        return self.search(query=name)
 
     def get_all(self) -> List[Employee]:
         """
@@ -202,7 +175,21 @@ class EmployeeRepository(BaseRepository):
             results = []
             clean_q = str(query).strip().lower() if query else None
             no_space_q = clean_q.replace(" ", "") if clean_q else None
-            q_words = [w for w in clean_q.split() if len(w) > 1] if clean_q else []
+            
+            STOP_WORDS = {
+                "who", "is", "was", "the", "what", "about", "tell", "me",
+                "show", "find", "get", "fetch", "employee", "details",
+                "information", "of", "for", "an", "a", "please", "can", "you",
+                "whom", "give", "know", "profile", "record", "with",
+            }
+            meaningful_words: List[str] = []
+            if clean_q:
+                import re
+                raw_tokens = [re.sub(r"[^a-z0-9]", "", tok) for tok in clean_q.split()]
+                raw_tokens = [tok for tok in raw_tokens if tok]
+                meaningful_words = [tok for tok in raw_tokens if tok not in STOP_WORDS and len(tok) > 1]
+                if not meaningful_words and raw_tokens:
+                    meaningful_words = raw_tokens
 
             for raw_row in response.data:
                 row = dict(raw_row)
@@ -266,12 +253,17 @@ class EmployeeRepository(BaseRepository):
                     name = str(row.get("full_name", "")).lower()
                     name_no_space = name.replace(" ", "")
 
-                    matched = (
-                        clean_q in emp_no
-                        or clean_q in name
-                        or (no_space_q and no_space_q in name_no_space)
-                        or (q_words and any(w in name for w in q_words))
-                    )
+                    matched = False
+                    # 1. Exact or direct substring match against ID or Name
+                    if clean_q in emp_no or clean_q in name:
+                        matched = True
+                    elif no_space_q and no_space_q in name_no_space:
+                        matched = True
+                    # 2. Require all meaningful query words to match
+                    elif meaningful_words:
+                        if all(w in name or w in emp_no for w in meaningful_words):
+                            matched = True
+
                     if not matched:
                         continue
 

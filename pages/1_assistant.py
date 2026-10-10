@@ -126,13 +126,108 @@ def _agent_registry() -> dict:
     }
 
 
+def _resolve_contextual_employee_question(user_message: str, context: list) -> str | None:
+    """
+    If the user message refers to a previous employee using pronouns or implicit reference
+    (e.g., 'He is recently hired right?', 'what is his salary/phone?', 'is she active?'),
+    resolve the referenced employee from conversation history and synthesize an answer.
+    """
+    if not context:
+        return None
+
+    import re
+    msg_low = user_message.lower()
+    pronoun_patterns = [
+        r"\b(he|she|they|him|her|his|their|this employee|that employee|the employee|this person|that person)\b",
+        r"\b(recently hired|joined recently|new hire|still working|is active|what department|which department)\b",
+    ]
+    is_referential = any(re.search(p, msg_low) for p in pronoun_patterns)
+    if not is_referential:
+        return None
+
+    # Find the most recently referenced employee in conversation history
+    emp_no = None
+    for turn in reversed(context):
+        text = str(turn.get("content", ""))
+        m = re.findall(r"\b(emp\d{1,6})\b", text, re.IGNORECASE)
+        if m:
+            emp_no = m[-1]
+            break
+
+    if not emp_no:
+        return None
+
+    service = getattr(st.session_state, "employee_service", None)
+    llm = getattr(st.session_state, "llm", None)
+    if not service or not llm:
+        return None
+
+    profile = service.get_full_profile(emp_no)
+    if not profile:
+        return None
+
+    profile_summary = (
+        f"Employee Number: {profile.employee_no}\n"
+        f"Full Name: {profile.full_name}\n"
+        f"Status: {'Active' if profile.is_active else 'Inactive'} ({profile.status or 'N/A'})\n"
+        f"Department: {profile.department or 'N/A'}\n"
+        f"Position Title: {profile.position_title or 'N/A'}\n"
+        f"Employment Type: {profile.employment_type or 'N/A'}\n"
+        f"Joining Date: {profile.joining_date or 'N/A'}\n"
+        f"Work Location: {profile.work_location or 'N/A'}\n"
+        f"Address: {profile.full_address or profile.city or 'N/A'}\n"
+        f"Email: {profile.email or 'N/A'}\n"
+        f"Phone: {profile.phone or 'N/A'}\n"
+        f"DOB: {profile.dob or 'N/A'} | Gender: {profile.gender or 'N/A'}"
+    )
+
+    system_prompt = (
+        "You are an HR Assistant. Answer the user's conversational question about the employee "
+        "directly, politely, and accurately using ONLY the profile information below. "
+        "Keep your response concise (1-3 sentences).\n\n"
+        f"Current Employee Profile:\n{profile_summary}"
+    )
+
+    try:
+        messages = llm.build_messages(
+            system_prompt=system_prompt,
+            user_message=user_message,
+            context=context,
+        )
+        return llm.generate(messages, temperature=0.1, max_tokens=256).strip()
+    except Exception:
+        return None
+
+
 def dispatch_message(user_message: str) -> str:
     """Route a user message — Tier 1 fast dispatch or Tier 2 planner."""
     memory = st.session_state.memory
     context = memory.get_context()
     router = st.session_state.router
 
-    # ---- Complexity heuristic: if the message looks multi-step,
+    # ---- 1. Direct Greetings & Help Fast Path ----
+    clean_msg = user_message.strip().lower().rstrip("!?. ")
+    if clean_msg in {"hi", "hello", "hey", "hola", "namaste", "greetings", "good morning", "good afternoon", "good evening", "howdy", "sup"} or clean_msg in {"help", "what can you do", "who are you"}:
+        response = (
+            "👋 **Hello! I'm your Enterprise HR AI Assistant.**\n\n"
+            "Here is what I can do for you:\n"
+            "• **Employee Lookups & Details**: *'Who is Rahul Sharma'*, *'Details of EMP0100'*, *'Address of Neha Gupta'*\n"
+            "• **Workforce Directory & Dates**: *'Show joining date of all employees'*, *'List active engineers in Chennai'*\n"
+            "• **Workforce Analytics**: *'Headcount by department'*, *'Average tenure'*, *'Attrition risk indicators'*\n"
+            "• **Career & Progression**: *'Show career timeline for EMP001'*, *'Who is ready for promotion?'*\n"
+            "• **Talent & Planning**: *'Assemble a project team of 2 AI engineers'*, *'Recommend transfers to Engineering'*\n\n"
+            "How can I assist you right now?"
+        )
+        memory.add_turn("assistant", response, intent="Greeting")
+        return response
+
+    # ---- 2. Contextual Pronoun / Reference Fast Path ----
+    contextual_ans = _resolve_contextual_employee_question(user_message, context)
+    if contextual_ans:
+        memory.add_turn("assistant", contextual_ans, intent="CRUD")
+        return contextual_ans
+
+    # ---- 3. Complexity heuristic: if the message looks multi-step,
     #      override the router's single-intent classification. ----
     if st.session_state.is_complex(user_message):
         agent_map = _agent_registry()
